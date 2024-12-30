@@ -16,6 +16,10 @@ namespace TorProxy
             Process.GetProcessesByName("tor").ToList().ForEach(p => p.Kill());
             Process.GetProcessesByName("obfs4proxy").ToList().ForEach(p => p.Kill());
             Process.GetProcessesByName("lyrebird").ToList().ForEach(p => p.Kill());
+            foreach (Process p in Process.GetProcessesByName("torproxy").ToList())
+            {
+                if (p.Id != Environment.ProcessId) p.Kill();
+            }
 
             AppDomain.CurrentDomain.ProcessExit += CurrentDomain_ProcessExit;
             ApplicationConfiguration.Initialize();
@@ -25,7 +29,9 @@ namespace TorProxy
 
         private static void CurrentDomain_ProcessExit(object? sender, EventArgs e)
         {
+            TorService.EnableProxy(false);
             TorService.Instance.StopTorProxy();
+            TorService.Instance.WaitForEnd();
         }
     }
 }

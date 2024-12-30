@@ -12,9 +12,9 @@ namespace TorProxy.Proxy
     public class TorService
     {
 
-        public static bool DebugMode = true;
-        
-        private static TorService _instance;
+        public static bool DebugMode = false;
+
+        private static TorService? _instance;
 
         public static TorService Instance { 
             get 
@@ -55,8 +55,8 @@ namespace TorProxy.Proxy
 
         public string StartupStatus { get; private set; } = string.Empty;
 
-        public List<string> FilteredBridges = new List<string>();
-        public List<string> WorkingBridges = new List<string>();
+        public List<string> FilteredBridges = new();
+        public List<string> WorkingBridges = new();
 
         public event EventHandler OnStartupStatusChange;
         public event EventHandler OnStatusChange;
@@ -136,7 +136,6 @@ namespace TorProxy.Proxy
             _torProxyProcess.Kill(entireProcessTree: true);
             Status = ProxyStatus.Disabled;
             OnStatusChange?.Invoke(this, EventArgs.Empty);
-            //_torProxyProcess.Close();
         }
 
         public void WaitForEnd()
@@ -169,6 +168,7 @@ namespace TorProxy.Proxy
 
         public void StartTorProxy()
         {
+            if (ProxyRunning) return;
             UpdateTorrc();
             _torProxyProcess = new Process();
             _torProxyProcess.StartInfo.FileName = "cmd.exe";
@@ -176,13 +176,14 @@ namespace TorProxy.Proxy
             _torProxyProcess.StartInfo.RedirectStandardOutput = true;
             _torProxyProcess.StartInfo.UseShellExecute = false;
             _torProxyProcess.StartInfo.WorkingDirectory = Paths["tor"];
+            _torProxyProcess.StartInfo.Arguments = "/c tor.exe -f " + Paths["torrc"];
 
             _torProxyProcess.StartInfo.WindowStyle = DebugMode ? ProcessWindowStyle.Maximized : ProcessWindowStyle.Hidden;
             _torProxyProcess.StartInfo.CreateNoWindow = !DebugMode;
 
-            _torProxyProcess.StartInfo.Arguments = "/c tor.exe -f torrc";
-            SetStartupStatus("Process started");
             _torProxyProcess.Start();
+
+            SetStartupStatus("Process started");
 
             /**
              * Thread which listens to the output of tor.exe and updates information about current state of the connection
@@ -192,21 +193,24 @@ namespace TorProxy.Proxy
             new(() =>
             {
                 char logType;
-                string line;
+                string? line;
                 ProxyStatus oldStatus;
-                Regex ipAddressSelector = new Regex("(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)");
-                Regex logTypeSelector = new Regex("\\[(.*?)\\]");
-                Regex percentageSelector = new Regex("(\\d+(\\.\\d+)?%)");
+                Regex ipAddressSelector = new("(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)");
+                Regex logTypeSelector = new("\\[(.*?)\\]");
+                Regex percentageSelector = new("(\\d+(\\.\\d+)?%)");
                 try
                 {
                     while (ProxyRunning)
                     {
-                        if (!_torProxyProcess.StandardOutput.EndOfStream)
+                        if (!_torProxyProcess.StandardOutput.EndOfStream && !_torProxyProcess.HasExited && _torProxyProcess.StandardOutput.BaseStream.CanRead)
                         {
-                            line = _torProxyProcess.StandardOutput.ReadLine().ToUpper();
+                            line = _torProxyProcess.StandardOutput.ReadLine()?.ToUpper();
+                            if (line == null) continue;
+
                             if (DebugMode) Console.WriteLine(line);
                             logType = logTypeSelector.Match(line).Value[1];
                             oldStatus = Status;
+
                             if (line.Contains("BOOTSTRAPPED") || line.Contains("STARTING"))
                             {
                                 SetStartupStatus("Conn: " + percentageSelector.Match(line).Value);
@@ -220,7 +224,7 @@ namespace TorProxy.Proxy
                             if (logType == 'E') Status = ProxyStatus.Disabled;
 
                             string server;
-                            if (logType == 'W' && (line.Contains("UNABLE TO CONNECT") || (line.Contains("PROBLEM BOOTSTRAPPING") && line.Contains("TIMEOUT"))))
+                            if (logType == 'W' && line.Contains("UNABLE TO CONNECT"))
                             {
                                 server = ipAddressSelector.Match(line).Value;
                                 FilteredBridges.RemoveAll(x => x.Contains(server));
@@ -238,9 +242,12 @@ namespace TorProxy.Proxy
                             if (oldStatus != Status) OnStatusChange?.Invoke(this, EventArgs.Empty);
                         }
                     }
-                }catch(Exception e)
+                }catch(Exception)
                 {
                     if (DebugMode) Console.WriteLine("SNIFFER THREAD CRASHED!");
+                    /**
+                     * This seems excessive...
+                     */
                     try
                     {
                         StopTorProxy();
@@ -250,16 +257,20 @@ namespace TorProxy.Proxy
                     }
                     catch(Exception)
                     {
-                        Console.WriteLine("RUNAWAY TOR SERVICE\nTRYING TO TERMINATE (LAST RESORT)");
+                        if (DebugMode) Console.WriteLine("RUNAWAY TOR SERVICE\nTRYING TO TERMINATE (LAST RESORT)"); // This seems like schizophrenia
                         EnableProxy(false);
                         Process.GetProcessesByName("tor").ToList().ForEach(p => p.Kill());
                         Process.GetProcessesByName("obfs4proxy").ToList().ForEach(p => p.Kill());
-                        Process.GetProcessesByName("TorProxy").ToList().ForEach(p => p.Kill());
-                        Application.Exit();
+                        Status = ProxyStatus.Disabled;
+                        OnStatusChange?.Invoke(this, EventArgs.Empty);
+                        Process.GetProcessesByName("torproxy").ToList().ForEach(p => p.Kill());
+                        Application.Exit(); // in case killing the process goes wrong.
                     }
                     return;
                 }
                 if (DebugMode) Console.WriteLine("SNIFFER THREAD ENDED");
+                Status = ProxyStatus.Disabled;
+                OnStatusChange?.Invoke(this, EventArgs.Empty);
                 EnableProxy(false);
             }
             )

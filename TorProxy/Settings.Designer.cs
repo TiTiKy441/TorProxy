@@ -115,15 +115,6 @@ namespace TorProxy
             Hide();
             WindowState = FormWindowState.Minimized;
             FormClosed += Settings_FormClosed;
-            AppDomain.CurrentDomain.ProcessExit += CurrentDomain_ProcessExit;
-        }
-
-        private void CurrentDomain_ProcessExit(object sender, EventArgs e)
-        {
-            TorService.EnableProxy(false);
-            TorService.Instance.StopTorProxy();
-            TorService.Instance.WaitForEnd();
-            Application.Exit();
         }
 
         private void ResetBridges_Click(object sender, EventArgs e)
@@ -151,6 +142,8 @@ namespace TorProxy
                     case ProxyStatus.Running:
                         notifyIcon.Icon = new Icon("images/icon_connected.ico");
                         contextMenu.Items.Find("use_proxy_button", false)[0].Enabled = true;
+                        ((ToolStripMenuItem)contextMenu.Items.Find("use_proxy_button", false)[0]).Checked = true;
+                        TorService.EnableProxy(true);
                         contextMenu.Items.Find("disconnect_button", false)[0].Enabled = true;
                         contextMenu.Items.Find("connect_button", false)[0].Enabled = false;
                         settingsDropdown.DropDownItems.Find("reset_bridges_button", false)[0].Enabled = false;
@@ -160,6 +153,8 @@ namespace TorProxy
                     case ProxyStatus.Starting:
                         notifyIcon.Icon = new Icon("images/icon_connecting.ico");
                         contextMenu.Items.Find("use_proxy_button", false)[0].Enabled = false;
+                        ((ToolStripMenuItem)contextMenu.Items.Find("use_proxy_button", false)[0]).Checked = false;
+                        TorService.EnableProxy(false);
                         contextMenu.Items.Find("disconnect_button", false)[0].Enabled = false;
                         contextMenu.Items.Find("connect_button", false)[0].Enabled = false;
                         settingsDropdown.DropDownItems.Find("reset_bridges_button", false)[0].Enabled = false;
@@ -169,6 +164,8 @@ namespace TorProxy
                     case ProxyStatus.Disabled:
                         notifyIcon.Icon = new Icon("images/icon_disconnected.ico");
                         contextMenu.Items.Find("use_proxy_button", false)[0].Enabled = false;
+                        ((ToolStripMenuItem)contextMenu.Items.Find("use_proxy_button", false)[0]).Checked = false;
+                        TorService.EnableProxy(false);
                         contextMenu.Items.Find("disconnect_button", false)[0].Enabled = false;
                         contextMenu.Items.Find("connect_button", false)[0].Enabled = true;
                         contextMenu.Items.Find("log_textbox", false)[0].Text = "NoProcess";
@@ -182,7 +179,7 @@ namespace TorProxy
 
         private void TorService_OnStartupStatusChange(object sender, EventArgs e)
         {
-            Invoke(new MethodInvoker(delegate { notifyIcon.ContextMenuStrip.Items[4].Text = TorService.Instance.StartupStatus; }));
+            Invoke(new MethodInvoker(delegate { contextMenu.Items.Find("log_textbox", false)[0].Text = TorService.Instance.StartupStatus; }));
         }
 
         private void Settings_FormClosed(object sender, FormClosedEventArgs e)
@@ -210,7 +207,7 @@ namespace TorProxy
             string pulledBridges = settingsDropdown.DropDownItems.Find("bridges_list", false)[0].Text;
             using (HttpClient client = new HttpClient())
             {
-                if (settingsDropdown.DropDownItems.Find("bridges_list", false)[0].Text.Contains("https")) pulledBridges = client.Send(new HttpRequestMessage(HttpMethod.Get, settingsDropdown.DropDownItems.Find("bridges_list", false)[0].Text)).Content.ReadAsStringAsync().Result;
+                if (settingsDropdown.DropDownItems.Find("bridges_list", false)[0].Text.Contains("http")) pulledBridges = client.Send(new HttpRequestMessage(HttpMethod.Get, settingsDropdown.DropDownItems.Find("bridges_list", false)[0].Text)).Content.ReadAsStringAsync().Result;
             }
 
             TorService.Instance.SetConfigurationValue("Bridge", pulledBridges.Split("\n"));
@@ -218,12 +215,15 @@ namespace TorProxy
 
             if (((ToolStripMenuItem)settingsDropdown.DropDownItems.Find("use_bridges_button", false)[0]).Checked)
             {
-
+                /**
+                 * This seems unsafe, can probably run away?
+                 */
                 Thread bridgesWaiter = new Thread(async () =>
                 {
                     while (TorService.Instance.WorkingBridges.Count < 10)
                     {
                         await Task.Delay(100);
+                        if (!TorService.Instance.ProxyRunning) return;
                     }
                     Invoke(new MethodInvoker(delegate
                     {
@@ -235,8 +235,6 @@ namespace TorProxy
                 });
                 bridgesWaiter.Start();
             }
-
-            //TorService.Instance.StartTorProxy();
         }
 
         private void UseProxyButton_Click(object sender, EventArgs e)
@@ -273,8 +271,6 @@ namespace TorProxy
             }
             base.Dispose(disposing);
         }
-
-
 
         #region Windows Form Designer generated code
 
