@@ -24,7 +24,9 @@ namespace TorProxy
             AppDomain.CurrentDomain.ProcessExit += CurrentDomain_ProcessExit;
             ApplicationConfiguration.Initialize();
             TorService.EnableProxy(false);
-            Application.Run(new Settings());
+            Settings window = new Settings();
+            window.ShowDialog();
+            //Application.Run(window);
         }
 
         private static void CurrentDomain_ProcessExit(object? sender, EventArgs e)
