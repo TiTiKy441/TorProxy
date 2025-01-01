@@ -37,7 +37,7 @@ namespace TorProxy
                         Name = "use_bridges_button",
                         Checked = (TorService.Instance.GetConfigurationValue("UseBridges")[0] == "1"),
                         CheckOnClick = true,
-                        Text = "Use OBFS4"
+                        Text = "Use bridges"
                     },
 
                     new ToolStripTextBox()
@@ -126,7 +126,7 @@ namespace TorProxy
         {
             TorService.Instance.SetConfigurationValue("UseBridges", ((ToolStripMenuItem)settingsDropdown.DropDownItems.Find("use_bridges_button", false)[0]).Checked ? "1" : "0");
 
-            if (TorService.Instance.Status != ProxyStatus.Disabled)
+            if (TorService.Instance.Status == ProxyStatus.Running)
             {
                 TorService.Instance.StopTorProxy();
                 TorService.Instance.WaitForEnd();
@@ -147,6 +147,7 @@ namespace TorProxy
                         contextMenu.Items.Find("disconnect_button", false)[0].Enabled = true;
                         contextMenu.Items.Find("connect_button", false)[0].Enabled = false;
                         settingsDropdown.DropDownItems.Find("reset_bridges_button", false)[0].Enabled = false;
+                        settingsDropdown.DropDownItems.Find("use_bridges_button", false)[0].Enabled = true;
                         settingsDropdown.DropDownItems.Find("bridges_list", false)[0].Enabled = false;
                         break;
 
@@ -155,9 +156,10 @@ namespace TorProxy
                         contextMenu.Items.Find("use_proxy_button", false)[0].Enabled = false;
                         ((ToolStripMenuItem)contextMenu.Items.Find("use_proxy_button", false)[0]).Checked = false;
                         TorService.EnableProxy(false);
-                        contextMenu.Items.Find("disconnect_button", false)[0].Enabled = false;
+                        contextMenu.Items.Find("disconnect_button", false)[0].Enabled = true;
                         contextMenu.Items.Find("connect_button", false)[0].Enabled = false;
                         settingsDropdown.DropDownItems.Find("reset_bridges_button", false)[0].Enabled = false;
+                        settingsDropdown.DropDownItems.Find("use_bridges_button", false)[0].Enabled = false;
                         settingsDropdown.DropDownItems.Find("bridges_list", false)[0].Enabled = false;
                         break;
 
@@ -170,6 +172,7 @@ namespace TorProxy
                         contextMenu.Items.Find("connect_button", false)[0].Enabled = true;
                         contextMenu.Items.Find("log_textbox", false)[0].Text = "NoProcess";
                         settingsDropdown.DropDownItems.Find("reset_bridges_button", false)[0].Enabled = true;
+                        settingsDropdown.DropDownItems.Find("use_bridges_button", false)[0].Enabled = true;
                         settingsDropdown.DropDownItems.Find("bridges_list", false)[0].Enabled = true;
                         break;
                 }
@@ -216,7 +219,7 @@ namespace TorProxy
             if (((ToolStripMenuItem)settingsDropdown.DropDownItems.Find("use_bridges_button", false)[0]).Checked)
             {
                 /**
-                 * This seems unsafe, can probably run away?
+                 * This seems unsafe, can probably go wrong if something unexpected happens
                  */
                 Thread bridgesWaiter = new Thread(async () =>
                 {

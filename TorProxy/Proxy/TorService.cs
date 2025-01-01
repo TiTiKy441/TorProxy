@@ -12,7 +12,7 @@ namespace TorProxy.Proxy
     public class TorService
     {
 
-        public static bool DebugMode = false;
+        public static bool DebugMode = true;
 
         private static TorService? _instance;
 
@@ -34,7 +34,7 @@ namespace TorProxy.Proxy
 
         private Dictionary<string, string[]> _torrcConfiguration = new()
         {
-            { "ClientTransportPlugin", new string[] { "obfs2,obfs3,obfs4,scramblesuit exec obfs4proxy.exe" } },
+            { "ClientTransportPlugin", new string[] { "obfs2,obfs3,obfs4,scramblesuit,webtunnel exec obfs4proxy.exe" } },
             { "SocksPort", new string[] { "9050" } },
             { "UseBridges", new string[] { "1" } },
         };
@@ -176,7 +176,7 @@ namespace TorProxy.Proxy
             _torProxyProcess.StartInfo.RedirectStandardOutput = true;
             _torProxyProcess.StartInfo.UseShellExecute = false;
             _torProxyProcess.StartInfo.WorkingDirectory = Paths["tor"];
-            _torProxyProcess.StartInfo.Arguments = "/c tor.exe -f " + Paths["torrc"];
+            _torProxyProcess.StartInfo.Arguments = "/c tor.exe -f torrc";
 
             _torProxyProcess.StartInfo.WindowStyle = DebugMode ? ProcessWindowStyle.Maximized : ProcessWindowStyle.Hidden;
             _torProxyProcess.StartInfo.CreateNoWindow = !DebugMode;
@@ -195,7 +195,8 @@ namespace TorProxy.Proxy
                 char logType;
                 string? line;
                 ProxyStatus oldStatus;
-                Regex ipAddressSelector = new("(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)");
+                Regex ipv4AddressSelector = new("(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)");
+                Regex ipv6AddressSelector = new("(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))");
                 Regex logTypeSelector = new("\\[(.*?)\\]");
                 Regex percentageSelector = new("(\\d+(\\.\\d+)?%)");
                 try
@@ -223,20 +224,28 @@ namespace TorProxy.Proxy
                             }
                             if (logType == 'E') Status = ProxyStatus.Disabled;
 
-                            string server;
+                            string serveripv4;
+                            string serveripv6;
+                            string bridgeString;
                             if (logType == 'W' && line.Contains("UNABLE TO CONNECT"))
                             {
-                                server = ipAddressSelector.Match(line).Value;
-                                FilteredBridges.RemoveAll(x => x.Contains(server));
-                                if (DebugMode) Console.WriteLine("OBFS4 BRIDGE " + server + " WAS FILTERED");
+                                serveripv4 = ipv4AddressSelector.Match(line).Value;
+                                serveripv6 = ipv6AddressSelector.Match(line).Value.ToLower();
+                                FilteredBridges.RemoveAll(x => (x.Contains(serveripv4) || x.Contains(serveripv6)));
+                                WorkingBridges.RemoveAll(x => (x.Contains(serveripv4) || x.Contains(serveripv6)));
+                                if (DebugMode) Console.WriteLine("BRIDGE " + serveripv4 + " WAS FILTERED");
                             }
 
                             if (logType == 'N' && line.Contains("NEW BRIDGE DESCRIPTOR"))
                             {
-                                server = ipAddressSelector.Match(line).Value;
-                                WorkingBridges.Add(_torrcConfiguration["Bridge"].ToList().FindAll(x => x.Contains(server))[0]);
-                                if (DebugMode) Console.WriteLine("OBFS4 BRIDGE " + _torrcConfiguration["Bridge"].ToList().FindAll(x => x.Contains(server))[0] + " WAS ADDED");
-                                if (DebugMode) Console.WriteLine("OBFS4 BRIDGE " + server + " IS WORKING");
+                                serveripv4 = ipv4AddressSelector.Match(line).Value;
+                                serveripv6 = ipv6AddressSelector.Match(line).Value.ToLower();
+                                bridgeString = _torrcConfiguration["Bridge"].ToList().FindAll(x => (x.Contains(serveripv4) || x.Contains(serveripv6)))[0];
+                                if (!WorkingBridges.Contains(bridgeString)) WorkingBridges.Add(bridgeString);
+                                if (!FilteredBridges.Contains(bridgeString)) FilteredBridges.Add(bridgeString);
+                                if (!FilteredBridges.Any(x => (x.Contains(serveripv4) || x.Contains(serveripv6)))) FilteredBridges.Add(bridgeString); 
+                                if (DebugMode) Console.WriteLine("BRIDGE " + bridgeString + " WAS ADDED");
+                                if (DebugMode) Console.WriteLine("BRIDGE " + serveripv4 + " IS WORKING");
                             }
 
                             if (oldStatus != Status) OnStatusChange?.Invoke(this, EventArgs.Empty);
@@ -245,27 +254,15 @@ namespace TorProxy.Proxy
                 }catch(Exception)
                 {
                     if (DebugMode) Console.WriteLine("SNIFFER THREAD CRASHED!");
-                    /**
-                     * This seems excessive...
-                     */
-                    try
-                    {
-                        StopTorProxy();
-                        EnableProxy(false);
-                        Status = ProxyStatus.Disabled;
-                        OnStatusChange?.Invoke(this, EventArgs.Empty);
-                    }
-                    catch(Exception)
-                    {
-                        if (DebugMode) Console.WriteLine("RUNAWAY TOR SERVICE\nTRYING TO TERMINATE (LAST RESORT)"); // This seems like schizophrenia
-                        EnableProxy(false);
-                        Process.GetProcessesByName("tor").ToList().ForEach(p => p.Kill());
-                        Process.GetProcessesByName("obfs4proxy").ToList().ForEach(p => p.Kill());
-                        Status = ProxyStatus.Disabled;
-                        OnStatusChange?.Invoke(this, EventArgs.Empty);
-                        Process.GetProcessesByName("torproxy").ToList().ForEach(p => p.Kill());
-                        Application.Exit(); // in case killing the process goes wrong.
-                    }
+
+                    // I dont trust StopTorProxy()
+                    Process.GetProcessesByName("obfs4proxy").ToList().ForEach(p => p.Kill());
+                    Process.GetProcessesByName("tor").ToList().ForEach(p => p.Kill());
+
+                    EnableProxy(false);
+
+                    Status = ProxyStatus.Disabled;
+                    OnStatusChange?.Invoke(this, EventArgs.Empty);
                     return;
                 }
                 if (DebugMode) Console.WriteLine("SNIFFER THREAD ENDED");
