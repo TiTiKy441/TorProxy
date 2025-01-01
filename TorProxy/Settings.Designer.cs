@@ -13,7 +13,13 @@ namespace TorProxy
         private NotifyIcon notifyIcon;
         private ContextMenuStrip contextMenu;
         private ToolStripDropDownButton settingsDropdown;
-        private string BridgesCollectorGithub = "https://github.com/scriptzteam/Tor-Bridges-Collector/blob/main/bridges-obfs4?raw=true";
+        private string BridgesCollectorGithub = "https://github.com/scriptzteam/Tor-Bridges-Collector/blob/main/bridges-webtunnel?raw=true";
+        private System.Windows.Forms.Timer filterTimer = new System.Windows.Forms.Timer()
+        {
+            Interval = 1000 * 30, // 0.5min
+        };
+
+        private List<int> runningBridgesCount = new();
 
         public Settings()
         {
@@ -44,6 +50,7 @@ namespace TorProxy
                     {
                         Name = "bridges_list",
                         Text = BridgesCollectorGithub,
+                        Multiline = true,
                         Enabled = true,
                     },
 
@@ -52,7 +59,22 @@ namespace TorProxy
                         Name = "reset_bridges_button",
                         Text = "Reset bridges",
                         Enabled = true,
-                    }
+                    },
+                    new ToolStripMenuItem()
+                    {
+                        Name = "filter_running_button",
+                        Checked = true,
+                        CheckOnClick = true,
+                        Text = "Stable filter"
+                    },
+                    
+                    new ToolStripTextBox()
+                    {
+                        Name = "filter_update",
+                        Text = (filterTimer.Interval / 1000).ToString(),
+                        Multiline = false,
+                        Enabled = true,
+                    },
                 },
             };
 
@@ -109,12 +131,38 @@ namespace TorProxy
             contextMenu.Items.Find("disconnect_button", false)[0].Click += DisconnectButton_Click;
             settingsDropdown.DropDownItems.Find("use_bridges_button", false)[0].Click += UseBridges_Click;
             settingsDropdown.DropDownItems.Find("reset_bridges_button", false)[0].Click += ResetBridges_Click;
+            settingsDropdown.DropDownItems.Find("filter_update", false)[0].TextChanged += FilterUpdateTimeTextbox_TextChanged;
             Size = new Size(0, 0);
             Visible = false;
             ShowInTaskbar = false;
             Hide();
             WindowState = FormWindowState.Minimized;
             FormClosed += Settings_FormClosed;
+            filterTimer.Tick += FilterTimer_Reload;
+            filterTimer.Stop();
+        }
+
+        private void FilterUpdateTimeTextbox_TextChanged(object sender, EventArgs e)
+        {
+            if (Int32.TryParse(settingsDropdown.DropDownItems.Find("filter_update", false)[0].Text, out int newTime))
+            {
+                filterTimer.Interval = newTime * 1000;
+            }
+            else
+            {
+                settingsDropdown.DropDownItems.Find("filter_update", false)[0].Text = (filterTimer.Interval / 1000).ToString();
+            }
+        }
+
+        private void FilterTimer_Reload(object sender, EventArgs e)
+        {
+            runningBridgesCount.Add(TorService.Instance.WorkingBridges.Count);
+            if (runningBridgesCount.Count >= 2 && runningBridgesCount[^2] == runningBridgesCount[^1])
+            {
+                filterTimer.Stop();
+                return;
+            }
+            TorService.Instance.ReloadWithWorkingBridges();
         }
 
         private void ResetBridges_Click(object sender, EventArgs e)
@@ -149,6 +197,12 @@ namespace TorProxy
                         settingsDropdown.DropDownItems.Find("reset_bridges_button", false)[0].Enabled = false;
                         settingsDropdown.DropDownItems.Find("use_bridges_button", false)[0].Enabled = true;
                         settingsDropdown.DropDownItems.Find("bridges_list", false)[0].Enabled = false;
+                        settingsDropdown.DropDownItems.Find("filter_running_button", false)[0].Enabled = false;
+                        settingsDropdown.DropDownItems.Find("filter_update", false)[0].Enabled = false;
+                        if (((ToolStripMenuItem)settingsDropdown.DropDownItems.Find("filter_running_button", false)[0]).Checked)
+                        {
+                            filterTimer.Start();
+                        }
                         break;
 
                     case ProxyStatus.Starting:
@@ -161,6 +215,12 @@ namespace TorProxy
                         settingsDropdown.DropDownItems.Find("reset_bridges_button", false)[0].Enabled = false;
                         settingsDropdown.DropDownItems.Find("use_bridges_button", false)[0].Enabled = false;
                         settingsDropdown.DropDownItems.Find("bridges_list", false)[0].Enabled = false;
+                        settingsDropdown.DropDownItems.Find("filter_running_button", false)[0].Enabled = false;
+                        settingsDropdown.DropDownItems.Find("filter_update", false)[0].Enabled = false;
+                        if (((ToolStripMenuItem)settingsDropdown.DropDownItems.Find("filter_running_button", false)[0]).Checked)
+                        {
+                            filterTimer.Start();
+                        }
                         break;
 
                     case ProxyStatus.Disabled:
@@ -174,6 +234,9 @@ namespace TorProxy
                         settingsDropdown.DropDownItems.Find("reset_bridges_button", false)[0].Enabled = true;
                         settingsDropdown.DropDownItems.Find("use_bridges_button", false)[0].Enabled = true;
                         settingsDropdown.DropDownItems.Find("bridges_list", false)[0].Enabled = true;
+                        settingsDropdown.DropDownItems.Find("filter_running_button", false)[0].Enabled = true;
+                        settingsDropdown.DropDownItems.Find("filter_update", false)[0].Enabled = true;
+                        filterTimer.Stop();
                         break;
                 }
             }));
@@ -207,37 +270,18 @@ namespace TorProxy
             TorService.EnableProxy(false);
             ((ToolStripMenuItem)contextMenu.Items.Find("use_proxy_button", false)[0]).Checked = false;
 
-            string pulledBridges = settingsDropdown.DropDownItems.Find("bridges_list", false)[0].Text;
-            using (HttpClient client = new HttpClient())
-            {
-                if (settingsDropdown.DropDownItems.Find("bridges_list", false)[0].Text.Contains("http")) pulledBridges = client.Send(new HttpRequestMessage(HttpMethod.Get, settingsDropdown.DropDownItems.Find("bridges_list", false)[0].Text)).Content.ReadAsStringAsync().Result;
-            }
-
-            TorService.Instance.SetConfigurationValue("Bridge", pulledBridges.Split("\n"));
-            TorService.Instance.StartTorProxy();
-
             if (((ToolStripMenuItem)settingsDropdown.DropDownItems.Find("use_bridges_button", false)[0]).Checked)
             {
-                /**
-                 * This seems unsafe, can probably go wrong if something unexpected happens
-                 */
-                Thread bridgesWaiter = new Thread(async () =>
+                string pulledBridges = settingsDropdown.DropDownItems.Find("bridges_list", false)[0].Text;
+                using (HttpClient client = new HttpClient())
                 {
-                    while (TorService.Instance.WorkingBridges.Count < 10)
-                    {
-                        await Task.Delay(100);
-                        if (!TorService.Instance.ProxyRunning) return;
-                    }
-                    Invoke(new MethodInvoker(delegate
-                    {
-                        settingsDropdown.DropDownItems.Find("bridges_list", false)[0].Text = string.Join("\n", TorService.Instance.WorkingBridges);
-                        TorService.Instance.StopTorProxy();
-                        TorService.Instance.SetConfigurationValue("Bridge", settingsDropdown.DropDownItems.Find("bridges_list", false)[0].Text.Split("\n"));
-                        TorService.Instance.StartTorProxy();
-                    }));
-                });
-                bridgesWaiter.Start();
+                    if (settingsDropdown.DropDownItems.Find("bridges_list", false)[0].Text.StartsWith("http")) pulledBridges = client.Send(new HttpRequestMessage(HttpMethod.Get, settingsDropdown.DropDownItems.Find("bridges_list", false)[0].Text)).Content.ReadAsStringAsync().Result;
+                }
+
+                TorService.Instance.SetConfigurationValue("Bridge", pulledBridges.Split("\n").ToArray());
             }
+
+            TorService.Instance.StartTorProxy();
         }
 
         private void UseProxyButton_Click(object sender, EventArgs e)
@@ -254,15 +298,13 @@ namespace TorProxy
         {
             TorService.EnableProxy(false);
             ((ToolStripMenuItem)contextMenu.Items.Find("use_proxy_button", false)[0]).Checked = false;
-
-            TorService.Instance.StopTorProxy();
-            TorService.Instance.WaitForEnd();
             if (TorService.DebugMode)
             {
                 File.WriteAllLines(AppContext.BaseDirectory + "\\tor\\workingBridges.txt", TorService.Instance.WorkingBridges);
                 File.WriteAllLines(AppContext.BaseDirectory + "\\tor\\filteredBridges.txt", TorService.Instance.FilteredBridges);
             }
-
+            TorService.Instance.StopTorProxy();
+            TorService.Instance.WaitForEnd();
             Application.Exit();
         }
 
