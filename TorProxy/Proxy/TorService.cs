@@ -242,8 +242,7 @@ namespace TorProxy.Proxy
                                 serveripv6 = ipv6AddressSelector.Match(line).Value.ToLower();
                                 bridgeString = _torrcConfiguration["Bridge"].ToList().FindAll(x => (x.Contains(serveripv4) || x.Contains(serveripv6)))[0];
                                 if (!WorkingBridges.Contains(bridgeString)) WorkingBridges.Add(bridgeString);
-                                if (!FilteredBridges.Contains(bridgeString)) FilteredBridges.Add(bridgeString);
-                                if (!FilteredBridges.Any(x => (x.Contains(serveripv4) || x.Contains(serveripv6)))) FilteredBridges.Add(bridgeString); 
+                                if (!FilteredBridges.Contains(bridgeString)) FilteredBridges.Add(bridgeString); 
                                 if (DebugMode) Console.WriteLine("BRIDGE " + bridgeString + " WAS ADDED");
                                 if (DebugMode) Console.WriteLine("BRIDGE " + serveripv4 + " IS WORKING");
                             }
