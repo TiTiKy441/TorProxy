@@ -37,7 +37,7 @@ namespace TorProxy.Proxy
             { "ClientTransportPlugin", new string[] { "obfs2,obfs3,obfs4,scramblesuit,webtunnel exec obfs4proxy.exe" } },
             { "SocksPort", new string[] { "9050" } },
             { "UseBridges", new string[] { "1" } },
-            { "DataDirectory", new string[] { AppContext.BaseDirectory.Replace(@"\", "/") + "/tor/" } }
+            { "DataDirectory", new string[] { AppContext.BaseDirectory.Replace(@"\", "/") + "/tor/" } },
         };
 
         // Used to set socks proxy
@@ -73,12 +73,7 @@ namespace TorProxy.Proxy
         private TorService()
         {
             _instance = this;
-
-            foreach (string path in Directory.GetFiles(Paths["tor"]))
-            {
-                if (!Paths.Values.Contains(Path.GetFullPath(path))) File.Delete(path);
-            }
-
+            ClearCache();
             if (File.Exists(Paths["torrc"]))
             {
                 _torrcConfiguration.Clear();
@@ -100,7 +95,6 @@ namespace TorProxy.Proxy
             {
                 UpdateTorrc();
             }
-            if (_torrcConfiguration.ContainsKey("Bridge")) FilteredBridges = _torrcConfiguration["Bridge"].ToList();
         }
 
         public void UpdateTorrc()
@@ -114,6 +108,15 @@ namespace TorProxy.Proxy
                 }
             }
             File.WriteAllText(Paths["torrc"], generatedConfiguration.ToString());
+        }
+
+        public void ClearCache()
+        {
+            if (ProxyRunning) return;
+            foreach (string path in Directory.GetFiles(Paths["tor"]))
+            {
+                if (!Paths.ContainsValue(Path.GetFullPath(path))) File.Delete(path);
+            }
         }
 
         public string[] GetConfigurationValue(string key)
@@ -180,12 +183,15 @@ namespace TorProxy.Proxy
             StopTorProxy();
             WaitForEnd();
             SetConfigurationValue("Bridge", working);
+            EnableProxy(false);
             StartTorProxy();
         }
 
         public void StartTorProxy()
         {
             if (ProxyRunning) return;
+            if (_torrcConfiguration.ContainsKey("Bridge")) FilteredBridges = _torrcConfiguration["Bridge"].ToList();
+            ClearCache();
             UpdateTorrc();
             _torProxyProcess = new Process();
             _torProxyProcess.StartInfo.FileName = "cmd.exe";
@@ -263,7 +269,7 @@ namespace TorProxy.Proxy
                             {
                                 serveripv4 = ipv4AddressSelector.Match(line).Value;
                                 serveripv6 = ipv6AddressSelector.Match(line).Value.ToLower();
-                                bridgeString = _torrcConfiguration["Bridge"].ToList().FindAll(x => ((serveripv4 != string.Empty ? x.Contains(serveripv4) : false) || (serveripv6 != string.Empty ? x.ToLower().Contains(serveripv6) : false)))[0].ToLower();
+                                bridgeString = _torrcConfiguration["Bridge"].ToList().FindAll(x => ((serveripv4 != string.Empty ? x.Contains(serveripv4) : false) || (serveripv6 != string.Empty ? x.ToLower().Contains(serveripv6) : false)))[0];
                                 if (!WorkingBridges.Contains(bridgeString)) WorkingBridges.Add(bridgeString);
                                 if (!FilteredBridges.Contains(bridgeString)) FilteredBridges.Add(bridgeString);
                                 if (DebugMode)
@@ -295,6 +301,7 @@ namespace TorProxy.Proxy
                     return;
                 }
                 if (DebugMode) Console.WriteLine("SNIFFER THREAD ENDED");
+
                 Status = ProxyStatus.Disabled;
                 OnStatusChange?.Invoke(this, EventArgs.Empty);
                 EnableProxy(false);
