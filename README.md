@@ -1,6 +1,6 @@
 # TorProxy
 Windows application to access Tor network and use it as a system proxy. Basically a Tor network VPN service.
-Autofetches obfs4 bridges and filters them from bridges collector or any other website you want to use
+Autofetches webtunnel bridges and filters them from bridges collector or any other website you want to use
 
 # Requiremenets
 ## Supported platforms:
