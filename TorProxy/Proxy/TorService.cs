@@ -6,6 +6,7 @@ using System.Text.RegularExpressions;
 using System.Linq;
 using System.Runtime.InteropServices;
 using Microsoft.Win32;
+using System.Linq.Expressions;
 
 namespace TorProxy.Proxy
 {
@@ -42,13 +43,13 @@ namespace TorProxy.Proxy
 
         // Used to set socks proxy
         [DllImport("wininet.dll")]
-        public static extern bool InternetSetOption(IntPtr hInternet, int dwOption, IntPtr lpBuffer, int dwBufferLength);
-        public const int INTERNET_OPTION_SETTINGS_CHANGED = 39;
-        public const int INTERNET_OPTION_REFRESH = 37;
+        private static extern bool InternetSetOption(IntPtr hInternet, int dwOption, IntPtr lpBuffer, int dwBufferLength);
+        private const int INTERNET_OPTION_SETTINGS_CHANGED = 39;
+        private const int INTERNET_OPTION_REFRESH = 37;
 
-        const string userRoot = "HKEY_CURRENT_USER";
-        const string subkey = "Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings";
-        const string keyName = userRoot + "\\" + subkey;
+        private const string userRoot = "HKEY_CURRENT_USER";
+        private const string subkey = "Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings";
+        private const string keyName = userRoot + "\\" + subkey;
 
         private Process? _torProxyProcess;
 
@@ -59,8 +60,11 @@ namespace TorProxy.Proxy
         public List<string> FilteredBridges = new();
         public List<string> WorkingBridges = new();
 
-        public event EventHandler OnStartupStatusChange;
-        public event EventHandler OnStatusChange;
+        public bool BridgeProxyExhausted = false;
+
+        public event EventHandler? OnStartupStatusChange;
+        public event EventHandler? OnStatusChange;
+        public event EventHandler? OnBridgeProxyExhaustion;
 
         public bool ProxyRunning 
         { 
@@ -193,26 +197,31 @@ namespace TorProxy.Proxy
             if (_torrcConfiguration.ContainsKey("Bridge")) FilteredBridges = _torrcConfiguration["Bridge"].ToList();
             ClearCache();
             UpdateTorrc();
-            _torProxyProcess = new Process();
-            _torProxyProcess.StartInfo.FileName = "cmd.exe";
-            _torProxyProcess.StartInfo.RedirectStandardInput = true;
-            _torProxyProcess.StartInfo.RedirectStandardOutput = true;
-            _torProxyProcess.StartInfo.UseShellExecute = false;
-            _torProxyProcess.StartInfo.WorkingDirectory = Paths["tor"];
-            _torProxyProcess.StartInfo.Arguments = "/c tor.exe -f torrc";
+            EnableProxy(false);
 
-            _torProxyProcess.StartInfo.WindowStyle = DebugMode ? ProcessWindowStyle.Maximized : ProcessWindowStyle.Hidden;
-            _torProxyProcess.StartInfo.CreateNoWindow = !DebugMode;
-
+            _torProxyProcess = new Process()
+            {
+                StartInfo = new ProcessStartInfo()
+                {
+                    FileName = "cmd.exe",
+                    RedirectStandardInput = true,
+                    RedirectStandardOutput = true,
+                    UseShellExecute = false,
+                    WorkingDirectory = Paths["tor"],
+                    Arguments = "/c tor.exe -f torrc",
+                    WindowStyle = DebugMode ? ProcessWindowStyle.Maximized : ProcessWindowStyle.Hidden,
+                    CreateNoWindow = !DebugMode,
+                },
+            };
             _torProxyProcess.Start();
 
             SetStartupStatus("Process started");
 
             /**
              * Thread which listens to the output of tor.exe and updates information about current state of the connection
-             * Following thread would kill the entire program if it crashes unexpectedly and if it couldnt stop tor process to prevent runaway tor service
+             * Following thread would kill the entire tor service if it crashes unexpectedly and if it couldnt stop tor process to prevent runaway tor service
              */
-            Thread outputSniffer = 
+            Thread outputSniffer =
             new(() =>
             {
                 char logType;
@@ -226,16 +235,11 @@ namespace TorProxy.Proxy
                 {
                     while (ProxyRunning)
                     {
-                        if (!_torProxyProcess.StandardOutput.EndOfStream && !_torProxyProcess.HasExited && _torProxyProcess.StandardOutput.BaseStream.CanRead)
+                        if (!_torProxyProcess.StandardOutput.EndOfStream && ProxyRunning && _torProxyProcess.StandardOutput.BaseStream.CanRead)
                         {
                             line = _torProxyProcess.StandardOutput.ReadLine()?.ToUpper();
                             if (line == null) continue;
 
-                            if (DebugMode)
-                            {
-                                Console.WriteLine(line);
-                                Console.Title = "W:F=" + WorkingBridges.Count + ":" + FilteredBridges.Count;
-                            }
                             logType = logTypeSelector.Match(line).Value[1];
                             oldStatus = Status;
 
@@ -253,16 +257,17 @@ namespace TorProxy.Proxy
                             string serveripv4;
                             string serveripv6;
                             string bridgeString;
+                            if (logType == 'W' && line.Contains("MAKE SURE THAT THE PROXY SERVER IS UP AND RUNNING") && !BridgeProxyExhausted)
+                            {
+                                BridgeProxyExhausted = true;
+                                OnBridgeProxyExhaustion?.Invoke(this, EventArgs.Empty);
+                            }
                             if (logType == 'W' && line.Contains("UNABLE TO CONNECT"))
                             {
                                 serveripv4 = ipv4AddressSelector.Match(line).Value;
                                 serveripv6 = ipv6AddressSelector.Match(line).Value.ToLower();
                                 FilteredBridges.RemoveAll(x => ((serveripv4 != string.Empty ? x.Contains(serveripv4) : false) || (serveripv6 != string.Empty ? x.ToLower().Contains(serveripv6) : false)));
                                 WorkingBridges.RemoveAll(x => ((serveripv4 != string.Empty ? x.Contains(serveripv4) : false) || (serveripv6 != string.Empty ? x.ToLower().Contains(serveripv6) : false)));
-                                if (DebugMode)
-                                {
-                                    Console.WriteLine("\nBRIDGE " + (serveripv4 != string.Empty ? serveripv4 : serveripv6) + " WAS FILTERED\n");
-                                }
                             }
 
                             if (logType == 'N' && line.Contains("NEW BRIDGE DESCRIPTOR"))
@@ -272,42 +277,39 @@ namespace TorProxy.Proxy
                                 bridgeString = _torrcConfiguration["Bridge"].ToList().FindAll(x => ((serveripv4 != string.Empty ? x.Contains(serveripv4) : false) || (serveripv6 != string.Empty ? x.ToLower().Contains(serveripv6) : false)))[0];
                                 if (!WorkingBridges.Contains(bridgeString)) WorkingBridges.Add(bridgeString);
                                 if (!FilteredBridges.Contains(bridgeString)) FilteredBridges.Add(bridgeString);
-                                if (DebugMode)
-                                {
-                                    Console.WriteLine("\nBRIDGE IPV4: " + serveripv4);
-                                    Console.WriteLine("BRIDGE IPV6: " + serveripv6);
-                                    Console.WriteLine("BRIDGE " + bridgeString + " WAS ADDED\n");
-                                }
                             }
 
                             if (oldStatus != Status) OnStatusChange?.Invoke(this, EventArgs.Empty);
+
+                            if (DebugMode)
+                            {
+                                Console.WriteLine(line);
+                                Console.Title = "W:F:A=" + WorkingBridges.Count + ":" + FilteredBridges.Count + ":" + GetConfigurationValue("Bridge").Length;
+                            }
                         }
                     }
-                }catch(Exception)
+                }catch (Exception)
                 {
-                    if (DebugMode) Console.WriteLine("SNIFFER THREAD CRASHED!");
+                    if (DebugMode) Console.WriteLine("SNIFFER THREAD LOOP CRASHED!");
 
                     // I dont trust StopTorProxy()
-                    Process.GetProcessesByName("obfs4proxy").ToList().ForEach(p => p.Kill());
-                    Process.GetProcessesByName("tor").ToList().ForEach(p => p.Kill());
-
-                    EnableProxy(false);
+                    Process.GetProcessesByName("obfs4proxy").ToList().ForEach(p => p.Kill(true));
+                    Process.GetProcessesByName("tor").ToList().ForEach(p => p.Kill(true));
 
                     WorkingBridges.Clear();
                     FilteredBridges.Clear();
-
-                    Status = ProxyStatus.Disabled;
-                    OnStatusChange?.Invoke(this, EventArgs.Empty);
-                    return;
                 }
                 if (DebugMode) Console.WriteLine("SNIFFER THREAD ENDED");
 
+                BridgeProxyExhausted = false;
                 Status = ProxyStatus.Disabled;
                 OnStatusChange?.Invoke(this, EventArgs.Empty);
                 EnableProxy(false);
             }
             )
-            { IsBackground = true, };
+            { 
+                IsBackground = true,
+            };
             outputSniffer.Start();
         }
     }

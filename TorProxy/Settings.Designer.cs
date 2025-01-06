@@ -16,19 +16,17 @@ namespace TorProxy
         private string BridgesCollectorGithub = "https://github.com/scriptzteam/Tor-Bridges-Collector/blob/main/bridges-webtunnel?raw=true";
         private System.Windows.Forms.Timer filterTimer = new System.Windows.Forms.Timer()
         {
-            Interval = 1000 * 30, // 0.5min
+            Interval = Convert.ToInt32(1000 * 8), // 8 sec
         };
-
-        private List<int> runningBridgesCount = new();
 
         public Settings()
         {
             Name = "TorProxy";
             Text = "TorProxy";
 
-            TorService.EnableProxy(false);
             TorService.Instance.OnStartupStatusChange += TorService_OnStartupStatusChange;
             TorService.Instance.OnStatusChange += TorService_OnStatusChange;
+            TorService.Instance.OnBridgeProxyExhaustion += TorService_OnBridgeProxyExhaustion;
 
             InitializeComponent();
 
@@ -138,8 +136,19 @@ namespace TorProxy
             Hide();
             WindowState = FormWindowState.Minimized;
             FormClosed += Settings_FormClosed;
-            filterTimer.Tick += FilterTimer_Reload;
+            filterTimer.Tick += FilterTimer_Tick;
             filterTimer.Stop();
+        }
+
+        private void TorService_OnBridgeProxyExhaustion(object sender, EventArgs e)
+        {
+            if (filterTimer.Enabled && TorService.Instance.WorkingBridges.Count() < 2)
+            {
+                filterTimer.Stop();
+                filterTimer.Start();
+                settingsDropdown.DropDownItems.Find("bridges_list", false)[0].Text = string.Join("\n", TorService.Instance.WorkingBridges);
+                TorService.Instance.ReloadWithWorkingBridges();
+            }
         }
 
         private void FilterUpdateTimeTextbox_TextChanged(object sender, EventArgs e)
@@ -154,11 +163,12 @@ namespace TorProxy
             }
         }
 
-        private void FilterTimer_Reload(object sender, EventArgs e)
+        private void FilterTimer_Tick(object sender, EventArgs e)
         {
-            runningBridgesCount.Add(TorService.Instance.WorkingBridges.Count);
-            if (runningBridgesCount.Count >= 2 && runningBridgesCount[^2] == runningBridgesCount[^1])
+            if (TorService.Instance.WorkingBridges.Count() < 2) return;
+            if (TorService.Instance.WorkingBridges.Count() == TorService.Instance.GetConfigurationValue("Bridge").Length)
             {
+                settingsDropdown.DropDownItems.Find("bridges_list", false)[0].Text = string.Join("\n", TorService.Instance.WorkingBridges);
                 filterTimer.Stop();
                 return;
             }
@@ -250,17 +260,18 @@ namespace TorProxy
 
         private void Settings_FormClosed(object sender, FormClosedEventArgs e)
         {
+            TorService.EnableProxy(false);
             TorService.Instance.StopTorProxy();
             TorService.Instance.WaitForEnd();
-            TorService.EnableProxy(false);
             Application.Exit();
         }
 
         private void DisconnectButton_Click(object sender, EventArgs e)
         {
             if (!TorService.Instance.ProxyRunning) return;
-            TorService.EnableProxy(false);
+
             ((ToolStripMenuItem)contextMenu.Items.Find("use_proxy_button", false)[0]).Checked = false;
+            TorService.EnableProxy(false);
 
             TorService.Instance.StopTorProxy();
             TorService.Instance.WaitForEnd();
@@ -268,9 +279,8 @@ namespace TorProxy
 
         private void ConnectButton_Click(object sender, EventArgs e)
         {
-            TorService.EnableProxy(false);
-            runningBridgesCount.Clear();
             ((ToolStripMenuItem)contextMenu.Items.Find("use_proxy_button", false)[0]).Checked = false;
+            TorService.EnableProxy(false);
 
             if (((ToolStripMenuItem)settingsDropdown.DropDownItems.Find("use_bridges_button", false)[0]).Checked)
             {
@@ -280,7 +290,9 @@ namespace TorProxy
                     if (settingsDropdown.DropDownItems.Find("bridges_list", false)[0].Text.StartsWith("http")) pulledBridges = client.Send(new HttpRequestMessage(HttpMethod.Get, settingsDropdown.DropDownItems.Find("bridges_list", false)[0].Text)).Content.ReadAsStringAsync().Result;
                 }
 
-                TorService.Instance.SetConfigurationValue("Bridge", pulledBridges.Split("\n").ToArray().Select(x => x.Trim()).ToArray());
+                List<string> bridgesList = pulledBridges.Split("\n").ToArray().Select(x => x.Trim()).ToList();
+                bridgesList.RemoveAll(string.IsNullOrWhiteSpace);
+                TorService.Instance.SetConfigurationValue("Bridge", bridgesList.ToArray());
             }
             TorService.Instance.StartTorProxy();
         }
@@ -297,7 +309,6 @@ namespace TorProxy
 
         private void ExitButton_Click(object sender, EventArgs e)
         {
-            TorService.EnableProxy(false);
             ((ToolStripMenuItem)contextMenu.Items.Find("use_proxy_button", false)[0]).Checked = false;
             if (TorService.DebugMode)
             {
