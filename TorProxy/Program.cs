@@ -1,5 +1,4 @@
-using System.Diagnostics;
-using System.Linq.Expressions;
+using System.Runtime.CompilerServices;
 using TorProxy.Proxy;
 
 namespace TorProxy
@@ -9,28 +8,42 @@ namespace TorProxy
         [STAThread]
         static void Main()
         {
-            List<string> usedFilenames = TorService.Paths.Values.ToList().ConvertAll(x => Path.GetFileName(x));
-            foreach (Process p in Process.GetProcesses().Where((x, i) => usedFilenames.Contains(x.ProcessName + ".exe")))
+            ApplicationConfiguration.Initialize();
+            AppDomain.CurrentDomain.ProcessExit += CurrentDomain_ProcessExit;
+
+            if (!File.Exists(Configuration.Instance.Get("RelayFile")[0]))
             {
-                try
+                File.WriteAllText(Configuration.Instance.Get("RelayFile")[0], "{}");
+                foreach(string mirror in Configuration.Instance.Get("RelayMirrors"))
                 {
-                    if (p.Id == Environment.ProcessId || p.Modules == null) continue;
-                    foreach (ProcessModule module in p.Modules)
+                    try
                     {
-                        if (module.FileName == null) return;
-                        if (TorService.Paths.ContainsValue(module.FileName)) p.Kill(true);
+                        Utils.DownloadToFile(mirror, Configuration.Instance.Get("RelayFile")[0]);
                     }
-                }catch(Exception) { }
+                    catch (Exception)
+                    {
+                        //TODO: Error handling
+                    }
+                }
+            }
+            RelayDistributor distributor = new(Configuration.Instance.Get("RelayFile")[0]);
+
+            string[] cmd;
+            foreach (string customParameter in Configuration.Instance.Get("AdditionalTorrcConfiguration"))
+            {
+                cmd = customParameter.Split(" ", 2);
+                TorService.Instance.SetConfigurationValue(cmd[0], cmd[1], true);
             }
 
-            AppDomain.CurrentDomain.ProcessExit += CurrentDomain_ProcessExit;
-            ApplicationConfiguration.Initialize();
+            TorService.KillTorProcess();
             TorService.EnableProxy(false);
+
             IconUserInterface iconInterface = new();
             iconInterface.Show();
 
             SettingsWindow settingsWindow = new();
             settingsWindow.Show();
+
             Application.Run(iconInterface);
         }
 
@@ -39,6 +52,8 @@ namespace TorProxy
             TorService.EnableProxy(false);
             TorService.Instance.StopTorProxy();
             TorService.Instance.WaitForEnd();
+            TorService.KillTorProcess();
+            Configuration.Instance.Save();
         }
     }
 }

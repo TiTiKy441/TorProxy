@@ -49,11 +49,26 @@
             copy_all_button = new Button();
             copy_obfs4_button = new Button();
             copy_webtunnel = new Button();
+            exit_nodes_list = new ListBox();
+            nodes_panel = new Panel();
+            stable_guard_relays_flag_checbox = new CheckBox();
+            fast_guard_relays_flag_checkbox = new CheckBox();
+            specify_guard_nodes_checkbox = new CheckBox();
+            guard_node_count_label = new Label();
+            guard_node_textbox = new TextBox();
+            guard_nodes_list = new ListBox();
+            exit_nodes_count_label = new Label();
+            stable_exit_relays_flag_checbox = new CheckBox();
+            fast_exit_relays_flag_checkbox = new CheckBox();
+            exit_node_textbox = new TextBox();
+            specify_exit_nodes_checkbox = new CheckBox();
+            update_tor_relays_button = new Button();
             bridges_count_textbox_label = new TextBox();
             filter_reload_time_textbox_label = new TextBox();
             bridges_control_panel.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)filter_reload_time_textbox).BeginInit();
             ((System.ComponentModel.ISupportInitialize)bridges_count_textbox).BeginInit();
+            nodes_panel.SuspendLayout();
             SuspendLayout();
             // 
             // bridges_count_textbox_label
@@ -244,6 +259,7 @@
             // log_textbox
             // 
             log_textbox.BackColor = SystemColors.Window;
+            log_textbox.Font = new Font("Segoe UI", 7.8F, FontStyle.Regular, GraphicsUnit.Point);
             log_textbox.Location = new Point(12, 379);
             log_textbox.Multiline = true;
             log_textbox.Name = "log_textbox";
@@ -283,11 +299,168 @@
             copy_webtunnel.UseVisualStyleBackColor = true;
             copy_webtunnel.Click += copy_webtunnel_Click;
             // 
+            // exit_nodes_list
+            // 
+            exit_nodes_list.Enabled = false;
+            exit_nodes_list.FormattingEnabled = true;
+            exit_nodes_list.ItemHeight = 20;
+            exit_nodes_list.Location = new Point(0, 0);
+            exit_nodes_list.Name = "exit_nodes_list";
+            exit_nodes_list.Size = new Size(200, 444);
+            exit_nodes_list.TabIndex = 22;
+            exit_nodes_list.SelectedIndexChanged += exit_nodes_list_SelectedIndexChanged;
+            // 
+            // nodes_panel
+            // 
+            nodes_panel.BackColor = SystemColors.ControlLight;
+            nodes_panel.Controls.Add(stable_guard_relays_flag_checbox);
+            nodes_panel.Controls.Add(fast_guard_relays_flag_checkbox);
+            nodes_panel.Controls.Add(specify_guard_nodes_checkbox);
+            nodes_panel.Controls.Add(guard_node_count_label);
+            nodes_panel.Controls.Add(guard_node_textbox);
+            nodes_panel.Controls.Add(guard_nodes_list);
+            nodes_panel.Controls.Add(exit_nodes_count_label);
+            nodes_panel.Controls.Add(stable_exit_relays_flag_checbox);
+            nodes_panel.Controls.Add(fast_exit_relays_flag_checkbox);
+            nodes_panel.Controls.Add(exit_node_textbox);
+            nodes_panel.Controls.Add(exit_nodes_list);
+            nodes_panel.Controls.Add(specify_exit_nodes_checkbox);
+            nodes_panel.Location = new Point(735, 18);
+            nodes_panel.Name = "nodes_panel";
+            nodes_panel.Size = new Size(400, 583);
+            nodes_panel.TabIndex = 23;
+            // 
+            // stable_guard_relays_flag_checbox
+            // 
+            stable_guard_relays_flag_checbox.AutoSize = true;
+            stable_guard_relays_flag_checbox.Enabled = false;
+            stable_guard_relays_flag_checbox.Location = new Point(200, 556);
+            stable_guard_relays_flag_checbox.Name = "stable_guard_relays_flag_checbox";
+            stable_guard_relays_flag_checbox.Size = new Size(73, 24);
+            stable_guard_relays_flag_checbox.TabIndex = 32;
+            stable_guard_relays_flag_checbox.Text = "Stable";
+            stable_guard_relays_flag_checbox.UseVisualStyleBackColor = true;
+            stable_guard_relays_flag_checbox.Click += stable_guard_relays_flag_checbox_Click;
+            // 
+            // fast_guard_relays_flag_checkbox
+            // 
+            fast_guard_relays_flag_checkbox.AutoSize = true;
+            fast_guard_relays_flag_checkbox.Enabled = false;
+            fast_guard_relays_flag_checkbox.Location = new Point(200, 526);
+            fast_guard_relays_flag_checkbox.Name = "fast_guard_relays_flag_checkbox";
+            fast_guard_relays_flag_checkbox.Size = new Size(56, 24);
+            fast_guard_relays_flag_checkbox.TabIndex = 31;
+            fast_guard_relays_flag_checkbox.Text = "Fast";
+            fast_guard_relays_flag_checkbox.UseVisualStyleBackColor = true;
+            fast_guard_relays_flag_checkbox.Click += fast_guard_relays_flag_checkbox_Click;
+            // 
+            // specify_guard_nodes_checkbox
+            // 
+            specify_guard_nodes_checkbox.AutoSize = true;
+            specify_guard_nodes_checkbox.Location = new Point(200, 496);
+            specify_guard_nodes_checkbox.Name = "specify_guard_nodes_checkbox";
+            specify_guard_nodes_checkbox.Size = new Size(166, 24);
+            specify_guard_nodes_checkbox.TabIndex = 30;
+            specify_guard_nodes_checkbox.Text = "Specify guard nodes";
+            specify_guard_nodes_checkbox.UseVisualStyleBackColor = true;
+            specify_guard_nodes_checkbox.Click += specify_guard_nodes_checkbox_Click;
+            // 
+            // guard_node_count_label
+            // 
+            guard_node_count_label.AutoSize = true;
+            guard_node_count_label.Location = new Point(200, 473);
+            guard_node_count_label.Name = "guard_node_count_label";
+            guard_node_count_label.Size = new Size(96, 20);
+            guard_node_count_label.TabIndex = 29;
+            guard_node_count_label.Text = "Guard nodes:";
+            // 
+            // guard_node_textbox
+            // 
+            guard_node_textbox.Enabled = false;
+            guard_node_textbox.Location = new Point(200, 443);
+            guard_node_textbox.Name = "guard_node_textbox";
+            guard_node_textbox.Size = new Size(200, 27);
+            guard_node_textbox.TabIndex = 28;
+            // 
+            // guard_nodes_list
+            // 
+            guard_nodes_list.Enabled = false;
+            guard_nodes_list.FormattingEnabled = true;
+            guard_nodes_list.ItemHeight = 20;
+            guard_nodes_list.Location = new Point(200, 0);
+            guard_nodes_list.Name = "guard_nodes_list";
+            guard_nodes_list.Size = new Size(200, 444);
+            guard_nodes_list.TabIndex = 27;
+            guard_nodes_list.SelectedIndexChanged += guard_nodes_list_SelectedIndexChanged;
+            // 
+            // exit_nodes_count_label
+            // 
+            exit_nodes_count_label.AutoSize = true;
+            exit_nodes_count_label.Location = new Point(5, 473);
+            exit_nodes_count_label.Name = "exit_nodes_count_label";
+            exit_nodes_count_label.Size = new Size(80, 20);
+            exit_nodes_count_label.TabIndex = 26;
+            exit_nodes_count_label.Text = "Exit nodes:";
+            // 
+            // stable_exit_relays_flag_checbox
+            // 
+            stable_exit_relays_flag_checbox.AutoSize = true;
+            stable_exit_relays_flag_checbox.Enabled = false;
+            stable_exit_relays_flag_checbox.Location = new Point(7, 556);
+            stable_exit_relays_flag_checbox.Name = "stable_exit_relays_flag_checbox";
+            stable_exit_relays_flag_checbox.Size = new Size(73, 24);
+            stable_exit_relays_flag_checbox.TabIndex = 25;
+            stable_exit_relays_flag_checbox.Text = "Stable";
+            stable_exit_relays_flag_checbox.UseVisualStyleBackColor = true;
+            stable_exit_relays_flag_checbox.Click += stable_exit_relays_flag_checbox_Click;
+            // 
+            // fast_exit_relays_flag_checkbox
+            // 
+            fast_exit_relays_flag_checkbox.AutoSize = true;
+            fast_exit_relays_flag_checkbox.Enabled = false;
+            fast_exit_relays_flag_checkbox.Location = new Point(7, 526);
+            fast_exit_relays_flag_checkbox.Name = "fast_exit_relays_flag_checkbox";
+            fast_exit_relays_flag_checkbox.Size = new Size(56, 24);
+            fast_exit_relays_flag_checkbox.TabIndex = 24;
+            fast_exit_relays_flag_checkbox.Text = "Fast";
+            fast_exit_relays_flag_checkbox.UseVisualStyleBackColor = true;
+            fast_exit_relays_flag_checkbox.Click += fast_exit_relays_flag_checkbox_Click;
+            // 
+            // exit_node_textbox
+            // 
+            exit_node_textbox.Enabled = false;
+            exit_node_textbox.Location = new Point(0, 443);
+            exit_node_textbox.Name = "exit_node_textbox";
+            exit_node_textbox.Size = new Size(200, 27);
+            exit_node_textbox.TabIndex = 23;
+            // 
+            // specify_exit_nodes_checkbox
+            // 
+            specify_exit_nodes_checkbox.AutoSize = true;
+            specify_exit_nodes_checkbox.Location = new Point(7, 496);
+            specify_exit_nodes_checkbox.Name = "specify_exit_nodes_checkbox";
+            specify_exit_nodes_checkbox.Size = new Size(151, 24);
+            specify_exit_nodes_checkbox.TabIndex = 0;
+            specify_exit_nodes_checkbox.Text = "Specify exit nodes";
+            specify_exit_nodes_checkbox.UseVisualStyleBackColor = true;
+            specify_exit_nodes_checkbox.CheckedChanged += specify_exit_nodes_checkbox_CheckedChanged;
+            // 
+            // update_tor_relays_button
+            // 
+            update_tor_relays_button.Location = new Point(735, 632);
+            update_tor_relays_button.Name = "update_tor_relays_button";
+            update_tor_relays_button.Size = new Size(400, 29);
+            update_tor_relays_button.TabIndex = 24;
+            update_tor_relays_button.Text = "Update tor relays";
+            update_tor_relays_button.UseVisualStyleBackColor = true;
+            update_tor_relays_button.Click += update_tor_relays_button_Click;
+            // 
             // SettingsWindow
             // 
             AutoScaleDimensions = new SizeF(8F, 20F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(741, 672);
+            ClientSize = new Size(1150, 672);
+            Controls.Add(update_tor_relays_button);
             Controls.Add(copy_webtunnel);
             Controls.Add(copy_obfs4_button);
             Controls.Add(copy_all_button);
@@ -307,6 +480,7 @@
             Controls.Add(reset_bridges_button);
             Controls.Add(use_bridges_checkbox);
             Controls.Add(bridges_control_panel);
+            Controls.Add(nodes_panel);
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MdiChildrenMinimizedAnchorBottom = false;
             Name = "SettingsWindow";
@@ -316,6 +490,8 @@
             bridges_control_panel.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)filter_reload_time_textbox).EndInit();
             ((System.ComponentModel.ISupportInitialize)bridges_count_textbox).EndInit();
+            nodes_panel.ResumeLayout(false);
+            nodes_panel.PerformLayout();
             ResumeLayout(false);
             PerformLayout();
         }
@@ -343,5 +519,19 @@
         private Button copy_all_button;
         private Button copy_obfs4_button;
         private Button copy_webtunnel;
+        private ListBox exit_nodes_list;
+        private Panel nodes_panel;
+        private CheckBox specify_exit_nodes_checkbox;
+        private TextBox exit_node_textbox;
+        private Button update_tor_relays_button;
+        private CheckBox fast_exit_relays_flag_checkbox;
+        private CheckBox stable_exit_relays_flag_checbox;
+        private Label exit_nodes_count_label;
+        private Label guard_node_count_label;
+        private TextBox guard_node_textbox;
+        private ListBox guard_nodes_list;
+        private CheckBox stable_guard_relays_flag_checbox;
+        private CheckBox fast_guard_relays_flag_checkbox;
+        private CheckBox specify_guard_nodes_checkbox;
     }
 }

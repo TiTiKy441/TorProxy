@@ -1,6 +1,6 @@
 ﻿namespace TorProxy
 {
-    internal sealed class Extensions
+    public sealed class Extensions
     {
 
     }

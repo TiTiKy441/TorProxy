@@ -3,7 +3,7 @@ using TorProxy.Proxy;
 
 namespace TorProxy
 {
-    public partial class IconUserInterface : Form
+    internal partial class IconUserInterface : Form
     {
 
         private NotifyIcon notifyIcon;
