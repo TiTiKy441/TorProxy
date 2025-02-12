@@ -1,13 +1,9 @@
 ﻿using System.Text;
 using System.Diagnostics;
-using System.Net.NetworkInformation;
-using System.Security.Policy;
 using System.Text.RegularExpressions;
-using System.Linq;
 using System.Runtime.InteropServices;
 using Microsoft.Win32;
-using System.Linq.Expressions;
-using System.Collections.ObjectModel;
+using TorProxy.Proxy.Control;
 
 namespace TorProxy.Proxy
 {
@@ -24,6 +20,8 @@ namespace TorProxy.Proxy
             } 
         }
 
+        public TorServicePort TorController;
+
         public static readonly Dictionary<string, string> Paths = new()
         {
             { "tor", Path.GetFullPath(AppContext.BaseDirectory + "tor\\") },
@@ -32,35 +30,62 @@ namespace TorProxy.Proxy
             { "torrc", Path.GetFullPath(AppContext.BaseDirectory + "tor\\torrc") },
         };
 
+        public static readonly Dictionary<string, string> TorCache = new()
+        {
+            { "cached_certs", Path.GetFullPath(AppContext.BaseDirectory + "tor\\cached-certs") },
+            { "cached_descriptors", Path.GetFullPath(AppContext.BaseDirectory + "tor\\cached-descriptors") },
+            { "cached_descriptos_new", Path.GetFullPath(AppContext.BaseDirectory + "tor\\cached-descriptors.new") }
+        };
+
         private Dictionary<string, string[]> _torrcConfiguration = new()
         {
             { "ClientTransportPlugin", new string[] { "obfs4,webtunnel exec obfs4proxy.exe" } },
             { "SocksPort", new string[] { "9050" } },
+            { "ControlPort", new string[] { "9051" } },
             { "UseBridges", new string[] { "1" } },
             { "DataDirectory", new string[] { AppContext.BaseDirectory.Replace(@"\", "/") + "/tor/" } },
+            { "DNSPort", new string[] { "53" } },
         };
-
-        // Used to set socks proxy
-        [DllImport("wininet.dll")]
-        private static extern bool InternetSetOption(IntPtr hInternet, int dwOption, IntPtr lpBuffer, int dwBufferLength);
-        private const int INTERNET_OPTION_SETTINGS_CHANGED = 39;
-        private const int INTERNET_OPTION_REFRESH = 37;
-
-        private const string userRoot = "HKEY_CURRENT_USER";
-        private const string subkey = "Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings";
-        private const string keyName = userRoot + "\\" + subkey;
 
         private Process? _torProxyProcess;
 
-        public ProxyStatus Status { get; private set; } = ProxyStatus.Disabled;
+        private ProxyStatus _status = ProxyStatus.Disabled;
 
-        public string StartupStatus { get; private set; } = string.Empty;
+        public ProxyStatus Status
+        {
+            get
+            {
+                return _status;
+            }
+            set
+            {
+                if (_status != value)
+                {
+                    _status = value;
+                    OnStatusChange?.Invoke(this, EventArgs.Empty);
+                }
+            }
+        }
 
-        public List<string> FilteredBridges = new();
-        public List<string> WorkingBridges = new();
-        public List<string> DeadBridges = new();
+        private string _startupStatus = string.Empty;
 
-        public bool BridgeProxyExhausted = false;
+        public string StartupStatus { 
+            get
+            {
+                return _startupStatus;
+            }
+            set
+            {
+                _startupStatus = value;
+                OnStartupStatusChange?.Invoke(this, EventArgs.Empty);
+            }
+        }
+
+        public List<string> FilteredBridges { get; private set; } = new();
+        public List<string> WorkingBridges { get; private set; } = new();
+        public List<string> DeadBridges { get; private set; } = new();
+
+        public bool BridgeProxyExhausted { get; private set; } = false;
 
         public event EventHandler? OnStartupStatusChange;
         public event EventHandler? OnStatusChange;
@@ -79,6 +104,7 @@ namespace TorProxy.Proxy
 
         private TorService()
         {
+
             _instance = this;
             ClearCache();
             if (File.Exists(Paths["torrc"]))
@@ -102,6 +128,26 @@ namespace TorProxy.Proxy
             {
                 UpdateTorrc();
             }
+            TorController = new TorServicePort(Convert.ToInt32(GetConfigurationValue("ControlPort").First()));
+            OnStatusChange += TorService_OnStatusChange;
+        }
+
+        private void TorService_OnStatusChange(object? sender, EventArgs e)
+        {
+            switch (Status)
+            {
+                case ProxyStatus.Disabled:
+                    TorController.Disconnect();
+                    break;
+
+                case ProxyStatus.Starting:
+                    TorController.Connect();
+                    TorController.Authenticate();
+                    break;
+
+                case ProxyStatus.Running:
+                    break;
+            }
         }
 
         public void UpdateTorrc()
@@ -118,13 +164,19 @@ namespace TorProxy.Proxy
             File.WriteAllText(Paths["torrc"], generatedConfiguration.ToString());
         }
 
-        public void ClearCache()
+        public static void ClearCache()
         {
+            foreach (string cachedFile in TorCache.Values)
+            {
+                if (File.Exists(cachedFile)) File.Delete(cachedFile);
+            }
+            /**
             if (ProxyRunning) return;
             foreach (string path in Directory.GetFiles(Paths["tor"]))
             {
                 if (!Paths.ContainsValue(Path.GetFullPath(path))) File.Delete(path);
             }
+            **/
         }
 
         public string[] GetConfigurationValue(string key)
@@ -158,42 +210,23 @@ namespace TorProxy.Proxy
         public void StopTorProxy()
         {
             if (!ProxyRunning) return;
+            if (TorController.IsUsable)
+            {
+                TorController.Shutdown();
+            }
             _torProxyProcess.StandardInput.Close();
             _torProxyProcess.StandardOutput.Close();
             _torProxyProcess.Kill(entireProcessTree: true);
             WorkingBridges.Clear();
             FilteredBridges.Clear();
             DeadBridges.Clear();
-            Status = ProxyStatus.Disabled;
-            OnStatusChange?.Invoke(this, EventArgs.Empty);
         }
 
         public void WaitForEnd()
         {
             if (!ProxyRunning) return;
-            _torProxyProcess.WaitForExit();
-        }
-
-        private void SetStartupStatus(string status)
-        {
-            StartupStatus = status;
-            OnStartupStatusChange?.Invoke(this, EventArgs.Empty);
-        }
-
-        public static void EnableProxy(bool enabled)
-        {
-            if (enabled)
-            {
-                Registry.SetValue(keyName, "ProxyServer", "socks=127.0.0.1:" + TorService.Instance.GetConfigurationValue("SocksPort")[0]);
-                Registry.SetValue(keyName, "ProxyEnable", 1, RegistryValueKind.DWord);
-            }
-            else
-            {
-                Registry.SetValue(keyName, "ProxyEnable", 0, RegistryValueKind.DWord);
-            }
-
-            InternetSetOption(IntPtr.Zero, INTERNET_OPTION_SETTINGS_CHANGED, IntPtr.Zero, 0);
-            InternetSetOption(IntPtr.Zero, INTERNET_OPTION_REFRESH, IntPtr.Zero, 0);
+            _torProxyProcess?.WaitForExit();
+            Thread.Sleep(1000);
         }
 
         public static void KillTorProcess()
@@ -211,7 +244,7 @@ namespace TorProxy.Proxy
                         if (Paths.ContainsValue(module.FileName)) processesToKill.Add(p);
                     }
                 }
-                catch (Exception e)
+                catch (Exception)
                 {
                 }
             }
@@ -224,7 +257,7 @@ namespace TorProxy.Proxy
             StopTorProxy();
             WaitForEnd();
             SetConfigurationValue("Bridge", working);
-            EnableProxy(false);
+            
             StartTorProxy();
         }
 
@@ -234,7 +267,6 @@ namespace TorProxy.Proxy
             if (_torrcConfiguration.ContainsKey("Bridge")) FilteredBridges = _torrcConfiguration["Bridge"].ToList();
             ClearCache();
             UpdateTorrc();
-            EnableProxy(false);
             if (_torProxyProcess != null) _torProxyProcess.Close();
             _torProxyProcess = new Process()
             {
@@ -252,7 +284,7 @@ namespace TorProxy.Proxy
             };
             _torProxyProcess.Start();
 
-            SetStartupStatus("Process started");
+            StartupStatus = "Process started";
 
             /**
              * Thread which listens to the output of tor.exe and updates information about current state of the connection
@@ -264,15 +296,17 @@ namespace TorProxy.Proxy
                 char logType;
                 string? line;
                 ProxyStatus oldStatus;
+                // TODO: Switch to Utils
                 Regex ipv4AddressSelector = new("(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)");
                 Regex ipv6AddressSelector = new("(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))");
                 Regex logTypeSelector = new("\\[(.*?)\\]");
                 Regex percentageSelector = new("(\\d+(\\.\\d+)?%)");
+
                 try
                 {
                     while (ProxyRunning)
                     {
-                        if (!_torProxyProcess.StandardOutput.EndOfStream && ProxyRunning && _torProxyProcess.StandardOutput.BaseStream.CanRead)
+                        if (!_torProxyProcess.StandardOutput.EndOfStream && _torProxyProcess.StandardOutput.BaseStream.CanRead)
                         {
                             line = _torProxyProcess.StandardOutput.ReadLine()?.ToUpper();
                             if (line == null) continue;
@@ -284,12 +318,12 @@ namespace TorProxy.Proxy
 
                             if (line.Contains("BOOTSTRAPPED") || line.Contains("STARTING"))
                             {
-                                SetStartupStatus("Conn: " + percentageSelector.Match(line).Value);
+                                StartupStatus = "Conn: " + percentageSelector.Match(line).Value;
                                 Status = ProxyStatus.Starting;
                             }
                             if (line.Contains("DONE") && line.Contains("100%"))
                             {
-                                SetStartupStatus("Done");
+                                StartupStatus = "Done";
                                 Status = ProxyStatus.Running;
                             }
 
@@ -329,8 +363,6 @@ namespace TorProxy.Proxy
                                     OnNewWorkingBridge?.Invoke(this, new NewBridgeEventArgs(bridgeString));
                                 }
                             }
-
-                            if (oldStatus != Status) OnStatusChange?.Invoke(this, EventArgs.Empty);
                         }
                     }
                 }catch (Exception)
@@ -343,8 +375,6 @@ namespace TorProxy.Proxy
                 }
                 BridgeProxyExhausted = false;
                 Status = ProxyStatus.Disabled;
-                OnStatusChange?.Invoke(this, EventArgs.Empty);
-                EnableProxy(false);
             }
             )
             { 

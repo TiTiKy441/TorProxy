@@ -1,24 +1,13 @@
 ﻿using System.Text;
-using System.Text.Json;
-using TorProxy.Proxy;
 
 namespace TorProxy
 {
     public sealed class Configuration
     {
 
-        private static Configuration? _instance;
+        public static Configuration Instance { get; private set; }
 
-        public static Configuration Instance
-        {
-            get
-            {
-                _instance ??= new Configuration();
-                return _instance;
-            }
-        }
-
-        public static readonly string ConfigFilePath = Path.GetFullPath(AppContext.BaseDirectory + "\\configuration");
+        private readonly string _configPath;
 
         private readonly Dictionary<string, string[]> _configuration = new()
         {
@@ -58,13 +47,81 @@ namespace TorProxy
                 {
 
                 }
+            },
+
+            {
+                "NetworkFilterType", new string[]
+                {
+                    // 0 = NetworkPacketInterceptor (just speed measurement)
+                    // 1 = NetworkBlockingFilter (blocks all non tor connections)
+                    // 2 = ProxyTunneler (UNFINISHED)
+                    // 3 = ProxiFyre 
+                    "1"
+                }
+            },
+
+            {
+                "UseTorDNS", new string[]
+                {
+                    "1"
+                }
+            },
+
+            {
+                "UseTorAsSystemProxy", new string[]
+                {
+                    "1"
+                }
+            },
+
+            {
+                // Default DNS server, sets DNS to this server if the tor dns is unavailable
+                "DefaultDNS", new string[]
+                {
+                    Utils.GetDnsAddress().ToString()
+                }
+            },
+
+            {
+                "StartEnabled", new string[]
+                {
+                    "1"
+                }
+            },
+
+            {
+                "ConnectOnStart", new string[]
+                {
+                    "0"
+                }
+            },
+
+            {
+                "ProxiFyreApps", new string[]
+                {
+
+                }
+            },
+
+            {
+                "HideConsole", new string[]
+                {
+                    "1"
+                }
             }
         };
 
-        public Configuration()
+        public static void Initialize(string configurationFilePath)
         {
-            if (!File.Exists(ConfigFilePath)) return;
-            string[] lines = File.ReadAllLines(ConfigFilePath);
+            if (Instance != null) throw new Exception("Configuration was already initialized");
+            Instance = new Configuration(configurationFilePath);
+        }
+
+        private Configuration(string configFile)
+        {
+            _configPath = configFile;
+            if (!File.Exists(configFile)) return;
+            string[] lines = File.ReadAllLines(configFile);
             string[] cmd;
             _configuration.Clear();
             foreach (string rawline in lines)
@@ -74,6 +131,7 @@ namespace TorProxy
                     string line = rawline.Trim();
                     if (string.IsNullOrEmpty(line) || line.StartsWith("#") || line.StartsWith("//")) continue;
                     cmd = line.Split("=", 2);
+                    cmd = cmd.Select(x => x.Trim()).ToArray();
                     if (_configuration.ContainsKey(cmd[0]))
                     {
                         _configuration[cmd[0]] = _configuration[cmd[0]].ToList().Append(cmd[1]).ToArray();
@@ -85,9 +143,11 @@ namespace TorProxy
                 }
                 catch (Exception)
                 {
+                    Console.WriteLine("Unable to parse line: " + rawline);
                     //TDOD: Error handling
                 }
             }
+            Console.WriteLine("New configuration loaded from: " + configFile);
         }
 
         public string[] Get(string key)
@@ -121,7 +181,7 @@ namespace TorProxy
                     generatedConfiguration.AppendLine(par + "=" + val);
                 }
             }
-            File.WriteAllText(ConfigFilePath, generatedConfiguration.ToString());
+            File.WriteAllText(_configPath, generatedConfiguration.ToString());
         }
     }
 }
