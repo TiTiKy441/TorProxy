@@ -68,6 +68,7 @@ namespace TorProxy.Proxy.Control
         {
             if (!IsUsable) throw new AggregateException("Control port is not authed");
             SendLine("SIGNAL SHUTDOWN");
+            Disconnect();
         }
 
         public bool Authenticate()

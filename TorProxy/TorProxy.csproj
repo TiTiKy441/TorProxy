@@ -25,6 +25,7 @@
     <None Remove="images\icon_connected.ico" />
     <None Remove="images\icon_connecting.ico" />
     <None Remove="images\icon_disconnected.ico" />
+    <None Remove="ndisapi.dll" />
     <None Remove="proxifyre\Newtonsoft.Json.dll" />
     <None Remove="proxifyre\Newtonsoft.Json.xml" />
     <None Remove="proxifyre\NLog.config" />
@@ -37,12 +38,6 @@
     <None Remove="proxifyre\Topshelf.xml" />
     <None Remove="tor\obfs4proxy.exe" />
     <None Remove="tor\tor.exe" />
-  </ItemGroup>
-       
-  <ItemGroup>
-    <Reference Include="ndisapi">
-      <HintPath>..\..\..\..\Downloads\ndisapi-3.6.1\ndisapi-3.6.1\bin\.net\x64\Debug\ndisapi.dll</HintPath>
-    </Reference>
   </ItemGroup>
 
   <ItemGroup>
@@ -65,6 +60,9 @@
 
   <ItemGroup>
     <EmbeddedResource Include="details-full.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </EmbeddedResource>
+    <EmbeddedResource Include="ndisapi.dll">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </EmbeddedResource>
     <EmbeddedResource Include="proxifyre\Newtonsoft.Json.dll">
@@ -105,6 +103,12 @@
   <ItemGroup>
     <PackageReference Include="PacketDotNet" Version="1.4.7" />
     <PackageReference Include="System.Management" Version="6.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="ndisapi">
+      <HintPath>ndisapi.dll</HintPath>
+    </Reference>
   </ItemGroup>
 
   <ItemGroup>

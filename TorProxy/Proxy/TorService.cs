@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using System.Runtime.InteropServices;
 using Microsoft.Win32;
 using TorProxy.Proxy.Control;
+using System.Diagnostics.Eventing.Reader;
 
 namespace TorProxy.Proxy
 {
@@ -34,7 +35,7 @@ namespace TorProxy.Proxy
         {
             { "cached_certs", Path.GetFullPath(AppContext.BaseDirectory + "tor\\cached-certs") },
             { "cached_descriptors", Path.GetFullPath(AppContext.BaseDirectory + "tor\\cached-descriptors") },
-            { "cached_descriptos_new", Path.GetFullPath(AppContext.BaseDirectory + "tor\\cached-descriptors.new") }
+            { "cached_descriptos_new", Path.GetFullPath(AppContext.BaseDirectory + "tor\\cached-descriptors.new") },
         };
 
         private Dictionary<string, string[]> _torrcConfiguration = new()
@@ -214,9 +215,12 @@ namespace TorProxy.Proxy
             {
                 TorController.Shutdown();
             }
-            _torProxyProcess.StandardInput.Close();
-            _torProxyProcess.StandardOutput.Close();
-            _torProxyProcess.Kill(entireProcessTree: true);
+            else
+            {
+                _torProxyProcess?.StandardInput.Close();
+                _torProxyProcess?.StandardOutput.Close();
+                _torProxyProcess?.Kill(entireProcessTree: true);
+            }
             WorkingBridges.Clear();
             FilteredBridges.Clear();
             DeadBridges.Clear();
@@ -226,7 +230,6 @@ namespace TorProxy.Proxy
         {
             if (!ProxyRunning) return;
             _torProxyProcess?.WaitForExit();
-            Thread.Sleep(1000);
         }
 
         public static void KillTorProcess()
@@ -257,7 +260,6 @@ namespace TorProxy.Proxy
             StopTorProxy();
             WaitForEnd();
             SetConfigurationValue("Bridge", working);
-            
             StartTorProxy();
         }
 
@@ -308,60 +310,66 @@ namespace TorProxy.Proxy
                     {
                         if (!_torProxyProcess.StandardOutput.EndOfStream && _torProxyProcess.StandardOutput.BaseStream.CanRead)
                         {
-                            line = _torProxyProcess.StandardOutput.ReadLine()?.ToUpper();
-                            if (line == null) continue;
-
-                            OnNewMessage?.Invoke(this, new NewMessageEventArgs(line));
-
-                            logType = logTypeSelector.Match(line).Value[1];
-                            oldStatus = Status;
-
-                            if (line.Contains("BOOTSTRAPPED") || line.Contains("STARTING"))
+                            try
                             {
-                                StartupStatus = "Conn: " + percentageSelector.Match(line).Value;
-                                Status = ProxyStatus.Starting;
-                            }
-                            if (line.Contains("DONE") && line.Contains("100%"))
-                            {
-                                StartupStatus = "Done";
-                                Status = ProxyStatus.Running;
-                            }
+                                line = _torProxyProcess.StandardOutput.ReadLine()?.ToUpper();
+                                if (line == null) continue;
 
-                            string serveripv4;
-                            string serveripv6;
-                            string bridgeString;
-                            if (logType == 'W' && line.Contains("MAKE SURE THAT THE PROXY SERVER IS UP AND RUNNING") && !BridgeProxyExhausted)
-                            {
-                                BridgeProxyExhausted = true;
-                                OnBridgeProxyExhaustion?.Invoke(this, EventArgs.Empty);
-                            }
-                            if (logType == 'W' && line.Contains("UNABLE TO CONNECT"))
-                            {
-                                serveripv4 = Utils.Ipv4AddressSelector.Match(line).Value;
-                                serveripv6 = Utils.Ipv6AddressSelector.Match(line).Value.ToLower();
-                                bridgeString = _torrcConfiguration["Bridge"].ToList().FindAll(x => ((serveripv4 != string.Empty ? x.Contains(serveripv4) : false) || (serveripv6 != string.Empty ? x.ToLower().Contains(serveripv6) : false)))[0];
-                                WorkingBridges.RemoveAll(x => ((serveripv4 != string.Empty ? x.Contains(serveripv4) : false) || (serveripv6 != string.Empty ? x.ToLower().Contains(serveripv6) : false)));
-                                if (!DeadBridges.Contains(bridgeString)) DeadBridges.Add(bridgeString);
-                                if (FilteredBridges.Any(x => ((serveripv4 != string.Empty ? x.Contains(serveripv4) : false) || (serveripv6 != string.Empty ? x.ToLower().Contains(serveripv6) : false))))
+                                logType = logTypeSelector.Match(line).Value[1];
+                                oldStatus = Status;
+
+                                OnNewMessage?.Invoke(this, new NewMessageEventArgs(line));
+
+                                if (line.Contains("BOOTSTRAPPED") || line.Contains("STARTING"))
                                 {
-                                    OnNewDeadBridge?.Invoke(this, new NewBridgeEventArgs(bridgeString));
-                                    FilteredBridges.RemoveAll(x => ((serveripv4 != string.Empty ? x.Contains(serveripv4) : false) || (serveripv6 != string.Empty ? x.ToLower().Contains(serveripv6) : false)));
+                                    StartupStatus = "Conn: " + percentageSelector.Match(line).Value;
+                                    Status = ProxyStatus.Starting;
+                                }
+                                if (line.Contains("DONE") && line.Contains("100%"))
+                                {
+                                    StartupStatus = "Done";
+                                    Status = ProxyStatus.Running;
                                 }
 
-                            }
-
-                            if (logType == 'N' && line.Contains("NEW BRIDGE DESCRIPTOR"))
-                            {
-                                serveripv4 = Utils.Ipv4AddressSelector.Match(line).Value;
-                                serveripv6 = Utils.Ipv6AddressSelector.Match(line).Value.ToLower();
-                                bridgeString = _torrcConfiguration["Bridge"].ToList().FindAll(x => ((serveripv4 != string.Empty ? x.Contains(serveripv4) : false) || (serveripv6 != string.Empty ? x.ToLower().Contains(serveripv6) : false)))[0];
-                                if (!FilteredBridges.Contains(bridgeString)) FilteredBridges.Add(bridgeString);
-                                if (DeadBridges.Contains(bridgeString)) DeadBridges.Remove(bridgeString);
-                                if (!WorkingBridges.Contains(bridgeString))
+                                string serveripv4;
+                                string serveripv6;
+                                string bridgeString;
+                                if (logType == 'W' && line.Contains("MAKE SURE THAT THE PROXY SERVER IS UP AND RUNNING") && !BridgeProxyExhausted)
                                 {
-                                    WorkingBridges.Add(bridgeString);
-                                    OnNewWorkingBridge?.Invoke(this, new NewBridgeEventArgs(bridgeString));
+                                    BridgeProxyExhausted = true;
+                                    OnBridgeProxyExhaustion?.Invoke(this, EventArgs.Empty);
                                 }
+                                if (logType == 'W' && line.Contains("UNABLE TO CONNECT"))
+                                {
+                                    serveripv4 = Utils.Ipv4AddressSelector.Match(line).Value;
+                                    serveripv6 = Utils.Ipv6AddressSelector.Match(line).Value.ToLower();
+                                    bridgeString = _torrcConfiguration["Bridge"].ToList().FindAll(x => ((serveripv4 != string.Empty ? x.Contains(serveripv4) : false) || (serveripv6 != string.Empty ? x.ToLower().Contains(serveripv6) : false)))[0];
+                                    WorkingBridges.RemoveAll(x => ((serveripv4 != string.Empty ? x.Contains(serveripv4) : false) || (serveripv6 != string.Empty ? x.ToLower().Contains(serveripv6) : false)));
+                                    if (!DeadBridges.Contains(bridgeString)) DeadBridges.Add(bridgeString);
+                                    if (FilteredBridges.Any(x => ((serveripv4 != string.Empty ? x.Contains(serveripv4) : false) || (serveripv6 != string.Empty ? x.ToLower().Contains(serveripv6) : false))))
+                                    {
+                                        OnNewDeadBridge?.Invoke(this, new NewBridgeEventArgs(bridgeString));
+                                        FilteredBridges.RemoveAll(x => ((serveripv4 != string.Empty ? x.Contains(serveripv4) : false) || (serveripv6 != string.Empty ? x.ToLower().Contains(serveripv6) : false)));
+                                    }
+
+                                }
+
+                                if (logType == 'N' && line.Contains("NEW BRIDGE DESCRIPTOR"))
+                                {
+                                    serveripv4 = Utils.Ipv4AddressSelector.Match(line).Value;
+                                    serveripv6 = Utils.Ipv6AddressSelector.Match(line).Value.ToLower();
+                                    bridgeString = _torrcConfiguration["Bridge"].ToList().FindAll(x => ((serveripv4 != string.Empty ? x.Contains(serveripv4) : false) || (serveripv6 != string.Empty ? x.ToLower().Contains(serveripv6) : false)))[0];
+                                    if (!FilteredBridges.Contains(bridgeString)) FilteredBridges.Add(bridgeString);
+                                    if (DeadBridges.Contains(bridgeString)) DeadBridges.Remove(bridgeString);
+                                    if (!WorkingBridges.Contains(bridgeString))
+                                    {
+                                        WorkingBridges.Add(bridgeString);
+                                        OnNewWorkingBridge?.Invoke(this, new NewBridgeEventArgs(bridgeString));
+                                    }
+                                }
+                            }
+                            catch (Exception)
+                            {
                             }
                         }
                     }

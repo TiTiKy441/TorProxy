@@ -47,6 +47,7 @@ namespace TorProxy.GUI
 
         private void use_as_proxy_checkbox_CheckedChanged(object sender, EventArgs e)
         {
+            if (filter_type_combobox.SelectedIndex == 3 && use_as_proxy_checkbox.Checked) use_as_proxy_checkbox.Checked = false;
             Configuration.Instance.Set("UseTorAsSystemProxy", new string[] { use_as_proxy_checkbox.Checked ? "1" : "0" });
             if (TorServiceListener.IsEnabled) ReloadTor();
         }
@@ -58,6 +59,8 @@ namespace TorProxy.GUI
                 filter_type_combobox.SelectedIndex = 0; // Since proxytunneler is unfinished, hardcoded skip
                 return;
             }
+
+            if (filter_type_combobox.SelectedIndex == 3 && use_as_proxy_checkbox.Checked) use_as_proxy_checkbox.Checked = false;
 
             Configuration.Instance.Set("NetworkFilterType", new string[] { filter_type_combobox.SelectedIndex.ToString() }); 
             if (TorServiceListener.IsEnabled) ReloadTor();
