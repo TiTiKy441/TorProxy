@@ -23,8 +23,9 @@ namespace TorProxy.GUI
             Instance = this;
             WindowState = FormWindowState.Minimized;
             MaximizeBox = false;
-            ControlBox = false;
-            FormBorderStyle = FormBorderStyle.FixedSingle;
+            //ControlBox = false;
+            FormBorderStyle = FormBorderStyle.FixedDialog;
+            MinimizeBox = true;
             filter_type_combobox.SelectedIndex = Convert.ToInt32(Configuration.Instance.Get("NetworkFilterType").First());
             use_dns_checkbox.Checked = Configuration.Instance.Get("UseTorDNS").First() == "1";
             use_as_proxy_checkbox.Checked = Configuration.Instance.Get("UseTorAsSystemProxy").First() == "1";
@@ -41,6 +42,11 @@ namespace TorProxy.GUI
 
         private void use_dns_checkbox_CheckedChanged(object sender, EventArgs e)
         {
+            if (!Utils.IsAdministrator())
+            {
+                use_dns_checkbox.Checked = false;
+                return;
+            }
             Configuration.Instance.Set("UseTorDNS", new string[] { use_dns_checkbox.Checked ? "1" : "0" });
             if (TorServiceListener.IsEnabled) ReloadTor();
         }

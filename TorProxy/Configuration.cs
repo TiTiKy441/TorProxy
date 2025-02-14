@@ -156,6 +156,11 @@ namespace TorProxy
             return _configuration[key];
         }
 
+        public void Set(string key, string value)
+        {
+            Set(key, new string[1] { value });
+        }
+
         public void Set(string key, string[] value, bool appendToEnd = false)
         {
             if (_configuration.ContainsKey(key) && appendToEnd)

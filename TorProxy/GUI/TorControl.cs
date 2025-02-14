@@ -48,7 +48,7 @@ namespace TorProxy.GUI
             bridge_type_combobox.SelectedIndex = 1;
             WindowState = FormWindowState.Minimized;
             MaximizeBox = false;
-            ControlBox = false;
+            //ControlBox = false;
 
             if (!TorService.Instance.ExistsConfigurationValue("Bridge")) bridges_list_textbox.Lines = Configuration.Instance.Get("DefaultBridges");
             else bridges_list_textbox.Lines = TorService.Instance.GetConfigurationValue("Bridge");

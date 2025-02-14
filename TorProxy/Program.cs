@@ -17,13 +17,6 @@ namespace TorProxy
         {
             Utils.AllocConsole();
             Utils.HideConsole();
-            if (!Utils.IsAdministrator())
-            {
-                Utils.ShowConsole();
-                Console.WriteLine("Required to run as administator!");
-                Console.ReadKey();
-                Environment.Exit(0);
-            }
 
             ApplicationConfiguration.Initialize();
             AppDomain.CurrentDomain.ProcessExit += CurrentDomain_ProcessExit;
@@ -31,6 +24,12 @@ namespace TorProxy
             TorService.KillTorProcess();
 
             Configuration.Initialize(Path.GetFullPath(AppContext.BaseDirectory + "\\configuration"));
+
+            if (!Utils.IsAdministrator() && Configuration.Instance.Get("UseTorDNS").First() == "1")
+            {
+                Console.WriteLine("Cant set tor dns server while running not as administrator!");
+                Configuration.Instance.Set("UseTorDNS", "0");
+            }
 
             if (Configuration.Instance.Get("HideConsole")[0] == "1") 
             { 
