@@ -7,6 +7,10 @@ using TorProxy.Listener;
 using System.Net.Sockets;
 using System.Text;
 using TorProxy.Network.ProxiFyre;
+using NdisApi;
+using System.Diagnostics;
+using System.DirectoryServices.ActiveDirectory;
+using System.IO.Compression;
 
 namespace TorProxy
 {
@@ -39,6 +43,9 @@ namespace TorProxy
             {
                 Utils.ShowConsole();
             }
+
+            CheckWinPkFilter();
+            CheckProxiFyre();
 
             TorServiceListener.Initialize();
             TorServiceListener.EnableTor(false);
@@ -103,6 +110,83 @@ namespace TorProxy
                         Console.WriteLine("Unable to download relay mirror from: " + mirror);
                         //TODO: Error handling
                     }
+
+                }
+            }
+        }
+
+        private static void CheckProxiFyre()
+        {
+            string proxiFyreDirectory = Path.GetFullPath(AppContext.BaseDirectory + @"\proxifyre\");
+            if (Directory.Exists(proxiFyreDirectory)) return;
+
+            Console.WriteLine("ProxiFyre directory was not found!");
+            Console.WriteLine("Trying to download proxifyre");
+
+            string url = @"https://github.com/wiresock/proxifyre/releases/download/v1.0.22/ProxiFyre-v1.0.22-" + System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture + "-signed.zip";
+            string archive = Path.GetFullPath(AppContext.BaseDirectory + @"\proxifyre.zip");
+
+            Console.WriteLine("Download URL: " + url);
+            Console.WriteLine("Installation path: " + proxiFyreDirectory);
+            Console.WriteLine("Installation archive: " + archive);
+
+            try
+            {
+                Utils.DownloadToFile(url, archive);
+                Directory.CreateDirectory(proxiFyreDirectory);
+                ZipFile.ExtractToDirectory(archive, proxiFyreDirectory);
+                Console.WriteLine("ProxiFyre downloaded!");
+                File.Delete(archive);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Unable to install proxifyre!");
+                Console.WriteLine(ex);
+                Console.WriteLine("Not critical");
+            }
+
+            Utils.DownloadToFile(url, archive);
+        }
+
+        private static void CheckWinPkFilter()
+        {
+            using (NdisApiDotNet ndisapi = new(null))
+            {
+                if (ndisapi.IsDriverLoaded()) return;
+
+                Console.WriteLine("Windows packet filter driver was not found!");
+                Console.WriteLine("Trying to download and install windows packet filter ");
+
+                if (!Utils.IsAdministrator())
+                {
+                    Console.WriteLine("Restart program as admin!");
+                    Console.ReadKey();
+                    Environment.Exit(255);
+                }
+
+                string url = @"https://github.com/wiresock/ndisapi/releases/download/v3.6.1/Windows.Packet.Filter.3.6.1.1." + System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture + ".msi";
+                string installerPath = Path.GetFullPath(AppContext.BaseDirectory + @"\WinPkFilter.msi");
+                Console.WriteLine("Download URL: " + url);
+                Console.WriteLine("Installer path: " + installerPath);
+                try
+                {
+                    Utils.DownloadToFile(url, installerPath);
+                    Process installerProcess = new();
+                    ProcessStartInfo processInfo = new();
+                    processInfo.Arguments = @"/i  " + installerPath + "  /q";
+                    processInfo.FileName = "msiexec";
+                    installerProcess.StartInfo = processInfo;
+                    installerProcess.Start();
+                    installerProcess.WaitForExit();
+                    Console.WriteLine("WinPkFilter installed");
+                    File.Delete(installerPath);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine("Unable to install Windows packet filter driver!");
+                    Console.WriteLine(ex);
+                    Console.ReadKey();
+                    Environment.Exit(255);
                 }
             }
         }

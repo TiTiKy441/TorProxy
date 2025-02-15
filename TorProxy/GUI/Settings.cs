@@ -8,6 +8,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using TorProxy.Listener;
+using TorProxy.Network.ProxiFyre;
 using TorProxy.Proxy;
 
 namespace TorProxy.GUI
@@ -29,7 +30,7 @@ namespace TorProxy.GUI
             filter_type_combobox.SelectedIndex = Convert.ToInt32(Configuration.Instance.Get("NetworkFilterType").First());
             use_dns_checkbox.Checked = Configuration.Instance.Get("UseTorDNS").First() == "1";
             use_as_proxy_checkbox.Checked = Configuration.Instance.Get("UseTorAsSystemProxy").First() == "1";
-            proxifyre_apps.Items.AddRange(Configuration.Instance.Get("ProxiFyreApps"));
+            proxifyre_apps.Items.AddRange(ProxiFyreService.Instance.GetApps());
             FormClosing += Settings_FormClosing;
         }
 
@@ -113,7 +114,7 @@ namespace TorProxy.GUI
 
         private void UpdateProxiFyreList()
         {
-            Configuration.Instance.Set("ProxiFyreApps", proxifyre_apps.Items.Cast<string>().ToArray());
+            ProxiFyreService.Instance.SetApps(proxifyre_apps.Items.Cast<string>().ToArray());
             if (TorServiceListener.IsEnabled) ReloadTor();
         }
     }

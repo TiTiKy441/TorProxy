@@ -97,13 +97,6 @@ namespace TorProxy
             },
 
             {
-                "ProxiFyreApps", new string[]
-                {
-
-                }
-            },
-
-            {
                 "HideConsole", new string[]
                 {
                     "1"

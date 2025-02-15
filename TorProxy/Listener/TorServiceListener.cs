@@ -165,11 +165,7 @@ namespace TorProxy.Listener
                 Firewall?.Start();
                 Utils.ReinitHttpClient("socks5://127.0.0.1:" + TorService.Instance.GetConfigurationValue("SocksPort").First());
 
-                if (_useProxiFyre)
-                {
-                    ProxiFyreService.Instance.SetApps(Configuration.Instance.Get("ProxiFyreApps"));
-                    ProxiFyreService.Instance.Start();
-                }
+                if (_useProxiFyre) ProxiFyreService.Instance.Start();
                 IsEnabled = true;
             }
             else
