@@ -41,6 +41,8 @@ namespace TorProxy.GUI
 
         private string _commandDispatch = string.Empty;
 
+        private string _discoveredBridgesBuffer = string.Empty;
+
         public TorControl()
         {
             _instance = this;
@@ -58,6 +60,9 @@ namespace TorProxy.GUI
             if (bridges_list_textbox.Lines.Any(x => x.StartsWith("obfs4"))) bridge_type_combobox.SelectedIndex = 0;
             if (bridges_list_textbox.Lines.Any(x => x.StartsWith("webtunnel"))) bridge_type_combobox.SelectedIndex = 1;
             if (bridges_list_textbox.Lines.Any(x => x.StartsWith("obfs4")) && bridges_list_textbox.Lines.Any(x => x.StartsWith("webtunnel"))) bridge_type_combobox.SelectedIndex = 2;
+
+            bridges_count_textbox.Value = Convert.ToInt32(Configuration.Instance.Get("MinBridgesCount").First());
+            filter_reload_time_textbox.Value = Convert.ToInt32(Configuration.Instance.Get("FilterReloadTime").First());
 
             TorService.Instance.OnNewDeadBridge += TorService_OnNewDeadBridge;
             TorService.Instance.OnNewWorkingBridge += TorService_OnNewWorkingBridge;
@@ -99,6 +104,7 @@ namespace TorProxy.GUI
         private void TorControl_FormClosed(object? sender, FormClosedEventArgs e)
         {
             Unhook();
+            RelayScanner.StopFilter();
         }
 
         public void Unhook()
@@ -285,6 +291,7 @@ namespace TorProxy.GUI
             }
             log_textbox.Clear();
             error_label.Visible = false;
+            bool startTor = true;
             TorService.Instance.SetConfigurationValue("UseBridges", use_bridges_checkbox.Checked ? "1" : "0");
             if (use_bridges_checkbox.Checked)
             {
@@ -334,6 +341,8 @@ namespace TorProxy.GUI
                     {
                         finalBridges.Add(bridgeLine.Split(" ", 2)[1].Trim());
                     }
+                    finalBridges.Add(bridgeLine.Trim());
+                    /**
                     if (bridgeLine.StartsWith("obfs4"))
                     {
                         if (bridge_type_combobox.SelectedIndex == 1) continue;
@@ -344,6 +353,7 @@ namespace TorProxy.GUI
                         if (bridge_type_combobox.SelectedIndex == 0) continue;
                         finalBridges.Add(bridgeLine.Trim());
                     }
+                    **/
                 }
                 Utils.Random.Shuffle(finalBridges);
                 TorService.Instance.SetConfigurationValue("Bridge", finalBridges.ToArray());
@@ -351,14 +361,16 @@ namespace TorProxy.GUI
                 current_bridges_list.Items.Clear();
                 current_bridges_list.Items.AddRange(finalBridges.ToArray());
                 total_bridges_count_label.Text = "Total bridges added: " + finalBridges.Count.ToString();
-                if (finalBridges.Count < bridges_count_textbox.Value)
+                if (finalBridges.Count < bridges_count_textbox.Value && bridge_type_combobox.SelectedIndex != 4)
                 {
                     DisplayError("Not enough bridges was added!");
                     return;
                 }
+
+
                 switch (bridge_type_combobox.SelectedIndex)
                 {
-                    case 0:
+                    case 0: // OBFS4 only
                         if (!finalBridges.Any(x => x.StartsWith("obfs4")))
                         {
                             DisplayError("No obfs4 bridges was found!");
@@ -366,7 +378,7 @@ namespace TorProxy.GUI
                         }
                         break;
 
-                    case 1:
+                    case 1: // webtunnel only
                         if (!finalBridges.Any(x => x.StartsWith("webtunnel")))
                         {
                             DisplayError("No webtunnel bridges was found!");
@@ -374,7 +386,7 @@ namespace TorProxy.GUI
                         }
                         break;
 
-                    case 2:
+                    case 2: // obfs4 + webtunnel both
                         if (!finalBridges.Any(x => x.StartsWith("obfs4")))
                         {
                             DisplayError("No obfs4 bridges was found!");
@@ -385,15 +397,54 @@ namespace TorProxy.GUI
                             DisplayError("No webtunnel bridges was found!");
                             return;
                         }
+                        break;
+
+                    case 3: // any bridge
+                        break;
+
+                    case 4: // Tor relay scanner
+                        connect_button.Enabled = false;
+                        _discoveredBridgesBuffer = string.Empty;
+                        startTor = false;
+                        RelayScanner.StartFilter();
+                        RelayScanner.OnNewWorkingRelay += RelayScanner_OnNewWorkingRelay;
+                        RelayScanner.OnScanCompleted += RelayScanner_OnScanCompleted;
+                        status_label.Text = "Status: Scanning relays...";
                         break;
                 }
-                filterTimer.Start();
+                if (startTor) filterTimer.Start();
             }
 
             TorService.Instance.SetConfigurationValue("ExitNodes", (specify_exit_nodes_checkbox.Checked && !string.IsNullOrWhiteSpace(exit_node_textbox.Text)) ? exit_node_textbox.Text : string.Empty);
             TorService.Instance.SetConfigurationValue("EntryNodes", (specify_guard_nodes_checkbox.Checked && !string.IsNullOrWhiteSpace(guard_node_textbox.Text)) ? guard_node_textbox.Text : string.Empty);
 
-            TorService.Instance.StartTorProxy();
+            if (startTor) TorService.Instance.StartTorProxy();
+        }
+
+        private void RelayScanner_OnScanCompleted(object? sender, EventArgs e)
+        {
+            Invoke(() =>
+            {
+                bridge_type_combobox.SelectedIndex = 3;
+
+                bridges_list_textbox.Text = _discoveredBridgesBuffer;
+
+                connect_button.Enabled = true;
+                connect_button.AccessibilityObject.DoDefaultAction();
+
+                RelayScanner.OnNewWorkingRelay -= RelayScanner_OnNewWorkingRelay;
+                RelayScanner.OnScanCompleted -= RelayScanner_OnScanCompleted;
+            });
+        }
+
+        private void RelayScanner_OnNewWorkingRelay(object? sender, OnNewWorkingRelayEventArgs e)
+        {
+            Invoke(() =>
+            {
+                // adding bridges every time new working appear direcrly to the bridges_list_textbox turned out to be laggy
+                // decied to make a buffer
+                _discoveredBridgesBuffer += e.Relay + "\n";
+            });
         }
 
         private void disconnect_button_Click(object sender, EventArgs e)
@@ -654,6 +705,12 @@ namespace TorProxy.GUI
             {
                 filterTimer.Interval = (int)(filter_reload_time_textbox.Value * 1000);
             }
+            Configuration.Instance.Set("FilterReloadTime", filter_reload_time_textbox.Value.ToString());
+        }
+
+        private void bridges_count_textbox_ValueChanged(object sender, EventArgs e)
+        {
+            Configuration.Instance.Set("MinBridgesCount", bridges_count_textbox.Value.ToString());
         }
     }
 }

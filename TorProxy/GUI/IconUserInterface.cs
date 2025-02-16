@@ -239,10 +239,11 @@ namespace TorProxy.GUI
             TorService.Instance.OnStartupStatusChange -= TorService_OnStartupStatusChange;
             TorService.Instance.OnStatusChange -= TorService_OnStatusChange;
             TorControl.Instance.Unhook();
-            TorService.Instance.StopTorProxy();
+            TorService.Instance.StopTorProxy(true); // Forced shutdown
             TorService.Instance.WaitForEnd();
+
             Application.Exit();
-            Environment.Exit(0);
+            Environment.Exit(0); // Dont touch...
         }
     }
 }

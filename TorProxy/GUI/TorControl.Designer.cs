@@ -181,7 +181,7 @@
             // 
             bridge_type_combobox.BackColor = SystemColors.Window;
             bridge_type_combobox.FormattingEnabled = true;
-            bridge_type_combobox.Items.AddRange(new object[] { "obfs4", "webtunnel", "obfs4 + webtunnel", "any" });
+            bridge_type_combobox.Items.AddRange(new object[] { "obfs4", "webtunnel", "obfs4 + webtunnel", "any", "Tor relay scanner" });
             bridge_type_combobox.Location = new Point(12, 213);
             bridge_type_combobox.Name = "bridge_type_combobox";
             bridge_type_combobox.Size = new Size(358, 28);
@@ -220,6 +220,7 @@
             bridges_count_textbox.TabIndex = 0;
             bridges_count_textbox.TextAlign = HorizontalAlignment.Right;
             bridges_count_textbox.Value = new decimal(new int[] { 2, 0, 0, 0 });
+            bridges_count_textbox.ValueChanged += bridges_count_textbox_ValueChanged;
             // 
             // connect_button
             // 

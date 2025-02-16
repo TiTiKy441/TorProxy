@@ -95,27 +95,17 @@ namespace TorProxy.Listener
 
         public static void InitializeFirewall()
         {
-            List<FilterBypass> filterBypass = new() { Utils.GetDnsBypass(), new FilterBypass(Utils.GetMainInterfaceAddress(), IPAddress.Parse("127.0.0.1")) };
-            string localAddress = Utils.GetMainInterfaceAddress().ToString();
+            List<FilterBypass> filterBypass = new() { Utils.GetDnsBypass(), };
+            IPAddress localAddress = Utils.GetMainInterfaceAddress();
             string addr;
             if (TorService.Instance.GetConfigurationValue("UseBridges").First() == "1")
             {
                 foreach (string bridge in TorService.Instance.GetConfigurationValue("Bridge"))
                 {
-                    switch (bridge.Split(" ", 2)[0])
+                    IPAddress[] ips = Utils.GetAllIpAddressesFromString(bridge);
+                    foreach (IPAddress ip in ips)
                     {
-                        case "obfs4":
-                            addr = Utils.Ipv4AddressSelector.Match(bridge).Value;
-                            filterBypass.Add(new FilterBypass(localAddress, addr));
-                            break;
-
-                        case "webtunnel":
-                            string addr2;
-                            addr = Utils.SquareBracketsSelector.Match(bridge).Value.ToString();
-                            addr2 = Dns.GetHostAddresses(new Uri(Utils.UrlSelector.Match(bridge).Value.Split(' ', 2)[0]).Host).First().ToString();
-                            filterBypass.Add(new FilterBypass(localAddress, addr));
-                            filterBypass.Add(new FilterBypass(localAddress, addr2));
-                            break;
+                        filterBypass.Add(new FilterBypass(localAddress, ip));
                     }
                 }
             }
@@ -124,7 +114,7 @@ namespace TorProxy.Listener
                 foreach (Relay relay in RelayDistributor.Instance.GetRelaysWithFlags(new string[] { "Guard", "Running", }))
                 {
                     addr = relay.Addresses.First().Split(':', 2).First();
-                    filterBypass.Add(new FilterBypass(localAddress, addr));
+                    filterBypass.Add(new FilterBypass(localAddress.ToString(), addr));
                 }
             }
 

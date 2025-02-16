@@ -101,6 +101,27 @@ namespace TorProxy
                 {
                     "1"
                 }
+            },
+
+            {
+                "RelayScannerTimeout", new string[]
+                {
+                    "5000"
+                }
+            },
+
+            {
+                "MinBridgesCount", new string[]
+                {
+                    "2"
+                }
+            },
+
+            {
+                "FilterReloadTime", new string[]
+                {
+                    "11"
+                }
             }
         };
 

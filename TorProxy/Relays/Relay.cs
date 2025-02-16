@@ -1,4 +1,6 @@
-﻿using System.Text.Json.Serialization;
+﻿using System.Net;
+using System.Net.Sockets;
+using System.Text.Json.Serialization;
 
 namespace TorProxy.Relays
 {
@@ -125,6 +127,5 @@ namespace TorProxy.Relays
         [JsonIgnore]
         [JsonPropertyName("measured")]
         public bool Measured { get; set; }
-
     }
 }

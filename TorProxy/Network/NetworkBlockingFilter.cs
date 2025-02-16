@@ -46,7 +46,7 @@ namespace TorProxy.Network
                 destinationNetRange = new IpNetRange(IpNetRange.ADDRESS_TYPE.IP_RANGE_TYPE, bps.DestinationAddress, bps.DestinationAddress);
 
                 ipfilter = new IpAddressFilter(
-                    AddressFamily.InterNetwork,
+                    AddressFamily.Unspecified,
                     IpAddressFilter.IP_FILTER_FIELDS.IP_FILTER_SRC_ADDRESS | IpAddressFilter.IP_FILTER_FIELDS.IP_FILTER_DEST_ADDRESS,
                     sourceNetRange,
                     destinationNetRange,
@@ -67,7 +67,7 @@ namespace TorProxy.Network
                 if (!bidirectionalBypass) continue;
 
                 ipfilter = new IpAddressFilter(
-                    AddressFamily.InterNetwork,
+                    AddressFamily.Unspecified,
                     IpAddressFilter.IP_FILTER_FIELDS.IP_FILTER_SRC_ADDRESS | IpAddressFilter.IP_FILTER_FIELDS.IP_FILTER_DEST_ADDRESS,
                     destinationNetRange,
                     sourceNetRange,

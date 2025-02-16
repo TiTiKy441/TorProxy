@@ -6,6 +6,7 @@ using System.Runtime.InteropServices;
 using System.Security.Policy;
 using System.Security.Principal;
 using System.Text.RegularExpressions;
+using System.Xml.XPath;
 using TorProxy.Network;
 
 namespace TorProxy
@@ -145,6 +146,21 @@ namespace TorProxy
         {
             return (new WindowsPrincipal(WindowsIdentity.GetCurrent()))
                       .IsInRole(WindowsBuiltInRole.Administrator);
+        }
+
+        // Gets all addresses from a string, parses DNS servers too
+        public static IPAddress[] GetAllIpAddressesFromString(string str, bool resolveDns=true)
+        {
+            List<IPAddress> result = new();
+            result.AddRange(Ipv4AddressSelector.Matches(str).ToList().ConvertAll(x => IPAddress.Parse(x.Value)));
+            result.AddRange(Ipv6AddressSelector.Matches(str).ToList().ConvertAll(x => IPAddress.Parse(x.Value)));
+            if (!resolveDns) return result.ToArray();
+            string[] hostnames = UrlSelector.Matches(str).ToList().ConvertAll(x => x.Value).ToArray();
+            foreach (string host in hostnames)
+            {
+                result.AddRange(Dns.GetHostAddresses(new Uri(host).Host));
+            }
+            return result.ToArray();
         }
     }
 }

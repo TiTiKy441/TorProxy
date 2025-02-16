@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using Microsoft.Win32;
 using TorProxy.Proxy.Control;
 using System.Diagnostics.Eventing.Reader;
+using System.DirectoryServices.ActiveDirectory;
 
 namespace TorProxy.Proxy
 {
@@ -208,10 +209,10 @@ namespace TorProxy.Proxy
             else _torrcConfiguration[key] = value;
         }
 
-        public void StopTorProxy()
+        public void StopTorProxy(bool forced=false)
         {
             if (!ProxyRunning) return;
-            if (TorController.IsUsable)
+            if (TorController.IsUsable && !forced)
             {
                 TorController.Shutdown();
             }
