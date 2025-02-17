@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "TorProxy": {
+      "commandName": "Project",
+      "nativeDebugging": true
+    }
+  }
+}

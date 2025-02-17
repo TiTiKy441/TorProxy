@@ -1,11 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Linq;
-using System.Net;
+﻿using System.Net;
 using System.Net.Sockets;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace TorProxy.Relays
 {
@@ -16,8 +10,8 @@ namespace TorProxy.Relays
 
         private static bool _filtering = false;
 
-        private static List<Relay>? _allRelays = new();
-        private static List<Relay>? _workingRelays = new();
+        private static List<Relay> _allRelays = new();
+        private static List<Relay> _workingRelays = new();
 
         public static event EventHandler<EventArgs>? OnScanCompleted;
         public static event EventHandler<OnNewWorkingRelayEventArgs>? OnNewWorkingRelay;
@@ -25,6 +19,7 @@ namespace TorProxy.Relays
         public static void StartFilter()
         {
             _allRelays = RelayDistributor.Instance.RelayInfo.Relays.ToList();
+            _workingRelays.Clear();
             Utils.Random.Shuffle(_allRelays);
             _filterProcess = new Thread(() =>
             {

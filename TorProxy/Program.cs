@@ -120,6 +120,8 @@ namespace TorProxy
             string proxiFyreDirectory = Path.GetFullPath(AppContext.BaseDirectory + @"\proxifyre\");
             if (Directory.Exists(proxiFyreDirectory)) return;
 
+            Utils.ShowConsole();
+
             Console.WriteLine("ProxiFyre directory was not found!");
             Console.WriteLine("Trying to download proxifyre");
 
@@ -144,8 +146,7 @@ namespace TorProxy
                 Console.WriteLine(ex);
                 Console.WriteLine("Not critical");
             }
-
-            Utils.DownloadToFile(url, archive);
+            if (Configuration.Instance.Get("HideConsole")[0] == "1") Utils.HideConsole();
         }
 
         private static void CheckWinPkFilter()
@@ -153,6 +154,8 @@ namespace TorProxy
             using (NdisApiDotNet ndisapi = new(null))
             {
                 if (ndisapi.IsDriverLoaded()) return;
+
+                Utils.ShowConsole();
 
                 Console.WriteLine("Windows packet filter driver was not found!");
                 Console.WriteLine("Trying to download and install windows packet filter ");
@@ -188,6 +191,7 @@ namespace TorProxy
                     Console.ReadKey();
                     Environment.Exit(255);
                 }
+                if (Configuration.Instance.Get("HideConsole")[0] == "1") Utils.HideConsole();
             }
         }
     }
